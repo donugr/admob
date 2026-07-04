@@ -100,8 +100,10 @@ public class DonugrAdmobPlugin extends Plugin implements
     public void configure(PluginCall call) {
         boolean enabled = call.getBoolean("enabled", false);
         boolean testMode = call.getBoolean("testMode", false);
+        boolean releaseSystemUiOnAdInteraction = call.getBoolean("releaseSystemUiOnAdInteraction", true);
         runtimeConfig.setEnabled(enabled);
         runtimeConfig.setTestMode(testMode);
+        runtimeConfig.setReleaseSystemUiOnAdInteraction(releaseSystemUiOnAdInteraction);
         runtimeConfig.setPlacements(extractPlacements(call.getObject("placements", new JSObject())));
 
         if (!enabled) {
@@ -143,6 +145,7 @@ public class DonugrAdmobPlugin extends Plugin implements
         data.put("platform", "android");
         data.put("enabled", runtimeConfig.isEnabled());
         data.put("testMode", runtimeConfig.isTestMode());
+        data.put("releaseSystemUiOnAdInteraction", runtimeConfig.isReleaseSystemUiOnAdInteraction());
         data.put("applicationIdConfigured", !TextUtils.isEmpty(runtimeConfig.getApplicationId()));
         data.put("applicationIdSource", runtimeConfig.getApplicationIdSource());
         data.put("placementsConfigured", runtimeConfig.getPlacementsCount());

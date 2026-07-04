@@ -6,6 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RuntimeConfig {
     private boolean enabled = false;
     private boolean testMode = false;
+    private boolean releaseSystemUiOnAdInteraction = true;
     private boolean requestConfigurationConfigured = false;
     private boolean mobileAdsInitialized = false;
     private String applicationId = "";
@@ -26,6 +27,14 @@ public class RuntimeConfig {
 
     public void setTestMode(boolean testMode) {
         this.testMode = testMode;
+    }
+
+    public boolean isReleaseSystemUiOnAdInteraction() {
+        return releaseSystemUiOnAdInteraction;
+    }
+
+    public void setReleaseSystemUiOnAdInteraction(boolean releaseSystemUiOnAdInteraction) {
+        this.releaseSystemUiOnAdInteraction = releaseSystemUiOnAdInteraction;
     }
 
     public boolean isRequestConfigurationConfigured() {
@@ -78,6 +87,7 @@ public class RuntimeConfig {
     public void reset() {
         enabled = false;
         testMode = false;
+        releaseSystemUiOnAdInteraction = true;
         requestConfigurationConfigured = false;
         mobileAdsInitialized = false;
         applicationId = "";

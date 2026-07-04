@@ -12,6 +12,7 @@ import com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAdLoa
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
 import java.util.Set;
@@ -99,6 +100,7 @@ public class RewardedInterstitialAdController {
             return;
         }
 
+        releaseSystemUiIfNeeded(activity);
         rewardedInterstitialAd.show(activity, rewardItem -> {
             String message = "Reward earned.";
             if (rewardItem != null) {
@@ -118,6 +120,7 @@ public class RewardedInterstitialAdController {
         rewardedInterstitialAd.setFullScreenContentCallback(new FullScreenContentCallback() {
             @Override
             public void onAdShowedFullScreenContent() {
+                releaseSystemUiIfNeeded(host.getPluginActivity());
                 events.emit("rewarded_interstitial", placementId, "shown", null, "Rewarded interstitial ad shown.");
             }
 
@@ -135,6 +138,7 @@ public class RewardedInterstitialAdController {
 
             @Override
             public void onAdClicked() {
+                releaseSystemUiIfNeeded(host.getPluginActivity());
                 events.emit("rewarded_interstitial", placementId, "clicked", null, "Rewarded interstitial ad clicked.");
             }
 
@@ -154,6 +158,13 @@ public class RewardedInterstitialAdController {
             runtimeConfig.resolvePlacement(placementId),
             "rewarded_interstitial"
         );
+    }
+
+    private void releaseSystemUiIfNeeded(Activity activity) {
+        if (!runtimeConfig.isReleaseSystemUiOnAdInteraction()) {
+            return;
+        }
+        SystemUiHelper.releaseForAdInteraction(activity);
     }
 
     public interface RewardedInterstitialHost {

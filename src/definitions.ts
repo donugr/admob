@@ -34,6 +34,7 @@ export type BridgeResult<T = undefined> = {
 export type ConfigureOptions = {
   enabled: boolean
   testMode: boolean
+  releaseSystemUiOnAdInteraction?: boolean
   applicationId?: string
   placements?: Record<string, string>
 }
@@ -66,6 +67,7 @@ export type RuntimeInfo = {
   platform: "android" | "ios" | "web"
   enabled: boolean
   testMode: boolean
+  releaseSystemUiOnAdInteraction?: boolean
   applicationIdConfigured: boolean
   applicationIdSource: ApplicationIdSource
   placementsConfigured: number

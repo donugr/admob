@@ -32,6 +32,7 @@ import id.donugr.admob.events.AdEventDispatcher;
 import id.donugr.admob.util.HostOverlayHelper;
 import id.donugr.admob.util.LayoutFingerprintHelper;
 import id.donugr.admob.util.RuntimeIdValidator;
+import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -440,6 +441,7 @@ public class NativeAdController {
                 public void onAdClicked() {
                     NativeSlotState current = slotStore.get(slot.slotId);
                     if (current != null) {
+                        releaseSystemUiIfNeeded(host.getPluginActivity());
                         notifyNativeClicked(current);
                     }
                 }
@@ -579,6 +581,13 @@ public class NativeAdController {
             slot.nativeAd != null &&
             slot.nativeAd.getMediaContent() != null &&
             slot.nativeAd.getMediaContent().hasVideoContent();
+    }
+
+    private void releaseSystemUiIfNeeded(Activity activity) {
+        if (!runtimeConfig.isReleaseSystemUiOnAdInteraction()) {
+            return;
+        }
+        SystemUiHelper.releaseForAdInteraction(activity);
     }
 
     private int dpToPx(int dp) {

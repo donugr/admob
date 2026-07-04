@@ -13,6 +13,7 @@ import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
 import java.util.Set;
@@ -100,6 +101,7 @@ public class RewardedAdController {
             return;
         }
 
+        releaseSystemUiIfNeeded(activity);
         rewardedAd.show(activity, rewardItem -> {
             String message = "Reward earned.";
             if (rewardItem != null) {
@@ -119,6 +121,7 @@ public class RewardedAdController {
         rewardedAd.setFullScreenContentCallback(new FullScreenContentCallback() {
             @Override
             public void onAdShowedFullScreenContent() {
+                releaseSystemUiIfNeeded(host.getPluginActivity());
                 events.emit("rewarded", placementId, "shown", null, "Rewarded ad shown.");
             }
 
@@ -136,6 +139,7 @@ public class RewardedAdController {
 
             @Override
             public void onAdClicked() {
+                releaseSystemUiIfNeeded(host.getPluginActivity());
                 events.emit("rewarded", placementId, "clicked", null, "Rewarded ad clicked.");
             }
 
@@ -155,6 +159,13 @@ public class RewardedAdController {
             runtimeConfig.resolvePlacement(placementId),
             "rewarded"
         );
+    }
+
+    private void releaseSystemUiIfNeeded(Activity activity) {
+        if (!runtimeConfig.isReleaseSystemUiOnAdInteraction()) {
+            return;
+        }
+        SystemUiHelper.releaseForAdInteraction(activity);
     }
 
     public interface RewardedHost {

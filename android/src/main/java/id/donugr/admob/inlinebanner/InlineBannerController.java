@@ -23,6 +23,7 @@ import id.donugr.admob.util.HostOverlayHelper;
 import id.donugr.admob.util.HostOverlayHelper.InlineBannerLayoutContext;
 import id.donugr.admob.util.LayoutFingerprintHelper;
 import id.donugr.admob.util.RuntimeIdValidator;
+import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -512,6 +513,7 @@ public class InlineBannerController {
             public void onAdClicked() {
                 InlineBannerSlotState current = slotStore.get(slot.slotId);
                 if (current != null) {
+                    releaseSystemUiIfNeeded(host.getPluginActivity());
                     notifyInlineBannerClicked(current);
                 }
             }
@@ -841,6 +843,13 @@ public class InlineBannerController {
             return base + ", rawHostRect={x=" + options.hostX + ", y=" + options.hostY + ", width=" + options.hostWidth + ", height=" + options.hostHeight + ", anchor=" + options.hostAnchor + "}";
         }
         return base + ", " + layoutContext.describeRawRect() + ", " + layoutContext.describeNormalizedRect() + ", " + layoutContext.describeEnvironment();
+    }
+
+    private void releaseSystemUiIfNeeded(Activity activity) {
+        if (!runtimeConfig.isReleaseSystemUiOnAdInteraction()) {
+            return;
+        }
+        SystemUiHelper.releaseForAdInteraction(activity);
     }
 
     private static class InlineBannerCallOptions {

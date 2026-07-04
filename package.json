@@ -1,8 +1,8 @@
 {
   "name": "@donugr/admob",
   "private": false,
-  "version": "0.1.0",
-  "description": "Standalone Capacitor AdMob plugin with consent, standard ads, native host ads, and inline banner host placements.",
+  "version": "0.2.0",
+  "description": "Standalone Capacitor AdMob plugin with consent, standard ads, rewarded interstitial, native host ads, and inline banner host placements.",
   "type": "module",
   "sideEffects": false,
   "main": "dist/index.js",

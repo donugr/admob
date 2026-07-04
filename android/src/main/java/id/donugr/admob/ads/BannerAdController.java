@@ -17,6 +17,7 @@ import com.google.android.gms.ads.LoadAdError;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -99,6 +100,7 @@ public class BannerAdController {
 
                 @Override
                 public void onAdClicked() {
+                    releaseSystemUiIfNeeded(host.getPluginActivity());
                     events.emit("banner", placementId, "clicked", null, "Banner clicked.");
                 }
 
@@ -215,6 +217,13 @@ public class BannerAdController {
         if (emitDestroyed) {
             events.emit("banner", placementId, "destroyed", null, "Banner destroyed.");
         }
+    }
+
+    private void releaseSystemUiIfNeeded(Activity activity) {
+        if (!runtimeConfig.isReleaseSystemUiOnAdInteraction()) {
+            return;
+        }
+        SystemUiHelper.releaseForAdInteraction(activity);
     }
 
     public interface BannerHost {

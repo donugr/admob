@@ -12,6 +12,7 @@ import com.google.android.gms.ads.appopen.AppOpenAd.AppOpenAdLoadCallback;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Date;
 import java.util.Map;
@@ -106,6 +107,7 @@ public class AppOpenAdController {
             call.resolve(PluginResultHelper.failure("NOT_READY", "App open ad is not ready or has expired.", "not_ready"));
             return;
         }
+        releaseSystemUiIfNeeded(activity);
         appOpenAd.show(activity);
         call.resolve(PluginResultHelper.success("ready"));
     }
@@ -125,6 +127,7 @@ public class AppOpenAdController {
         appOpenAd.setFullScreenContentCallback(new FullScreenContentCallback() {
             @Override
             public void onAdShowedFullScreenContent() {
+                releaseSystemUiIfNeeded(host.getPluginActivity());
                 events.emit("app_open", placementId, "shown", null, "App open ad shown.");
             }
 
@@ -144,6 +147,7 @@ public class AppOpenAdController {
 
             @Override
             public void onAdClicked() {
+                releaseSystemUiIfNeeded(host.getPluginActivity());
                 events.emit("app_open", placementId, "clicked", null, "App open ad clicked.");
             }
 
@@ -163,6 +167,13 @@ public class AppOpenAdController {
             runtimeConfig.resolvePlacement(placementId),
             "app_open"
         );
+    }
+
+    private void releaseSystemUiIfNeeded(Activity activity) {
+        if (!runtimeConfig.isReleaseSystemUiOnAdInteraction()) {
+            return;
+        }
+        SystemUiHelper.releaseForAdInteraction(activity);
     }
 
     public interface AppOpenHost {

@@ -64,6 +64,7 @@ async function getRuntimeInfo(): Promise<BridgeResult<RuntimeInfo>> {
     platform: "web",
     enabled: runtime.enabled,
     testMode: runtime.testMode,
+    releaseSystemUiOnAdInteraction: runtime.releaseSystemUiOnAdInteraction,
     applicationIdConfigured: Boolean(runtime.applicationId),
     applicationIdSource: runtime.applicationIdSource,
     placementsConfigured: placementRegistry.count(),

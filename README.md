@@ -233,6 +233,7 @@ import { DonugrAdmob } from "@donugr/admob"
 await DonugrAdmob.configure({
   enabled: true,
   testMode: true,
+  releaseSystemUiOnAdInteraction: true,
   placements: {
     banner_home: "ca-app-pub-xxxx/banner",
     interstitial_break: "ca-app-pub-xxxx/interstitial",
@@ -250,6 +251,7 @@ Production-oriented placement example:
 await DonugrAdmob.configure({
   enabled: true,
   testMode: false,
+  releaseSystemUiOnAdInteraction: true,
   placements: {
     banner_home: "ca-app-pub-xxxx/banner-home",
     interstitial_break: "ca-app-pub-xxxx/interstitial-break",
@@ -267,6 +269,13 @@ Consumer recommendation:
 - prefer placement mapping in `configure()` as the default production path
 - use `adUnitId` only when you intentionally need an explicit per-call override
 - avoid mixing production `adUnitId` overrides with `testMode: true`
+
+System UI safety note:
+
+- `releaseSystemUiOnAdInteraction` defaults to `true`
+- when enabled, the plugin asks Android to show system bars again before fullscreen ads show and when ad clicks occur
+- this helps app consumers that normally run immersive/fullscreen shells, especially if hardware back or navigation bars are heavily customized
+- this setting does not change the ad click destination; it only helps restore user escape affordances such as visible system bars
 
 Keep `testMode: true` and use Google test ads or test devices during development.
 
@@ -1052,6 +1061,7 @@ Payload shape:
 | `platform` | `"android" \| "ios" \| "web"` | Current platform |
 | `enabled` | `boolean` | Whether ads are enabled in plugin runtime config |
 | `testMode` | `boolean` | Whether runtime is in test mode |
+| `releaseSystemUiOnAdInteraction` | `boolean` | Whether Android should restore system bars during ad interaction safety handling |
 | `applicationIdConfigured` | `boolean` | Whether an app ID is configured |
 | `applicationIdSource` | `"js" \| "android_manifest" \| "ios_plist" \| "missing"` | Where the app ID came from |
 | `placementsConfigured` | `number` | Number of registered placements |
@@ -1089,6 +1099,7 @@ Current Android runtime info includes:
 
 - `enabled`
 - `testMode`
+- `releaseSystemUiOnAdInteraction`
 - `applicationIdConfigured`
 - `applicationIdSource`
 - `placementsConfigured`
@@ -1113,6 +1124,7 @@ This plugin does not attempt to bypass, soften, or reinterpret Google AdMob poli
 - always use test ads during development
 - for reward-based formats, make the reward contract explicit in the app UI before show
 - do not label a native placement as guaranteed video unless your app also handles image fallback correctly
+- if your app uses immersive mode or disables back/navigation aggressively, keep a tested recovery path so users can still return after ad interaction
 - do not inflate clicks or impressions
 - do not place interstitials at disruptive moments
 - do not grant rewarded outcomes before reward completion

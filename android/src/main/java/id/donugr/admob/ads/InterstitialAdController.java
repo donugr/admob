@@ -12,6 +12,7 @@ import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
 import java.util.Set;
@@ -98,6 +99,7 @@ public class InterstitialAdController {
             call.resolve(PluginResultHelper.failure("NOT_READY", "Interstitial is not ready.", "not_ready"));
             return;
         }
+        releaseSystemUiIfNeeded(activity);
         interstitialAd.show(activity);
         call.resolve(PluginResultHelper.success("ready"));
     }
@@ -111,6 +113,7 @@ public class InterstitialAdController {
         interstitialAd.setFullScreenContentCallback(new FullScreenContentCallback() {
             @Override
             public void onAdShowedFullScreenContent() {
+                releaseSystemUiIfNeeded(host.getPluginActivity());
                 events.emit("interstitial", placementId, "shown", null, "Interstitial shown.");
             }
 
@@ -128,6 +131,7 @@ public class InterstitialAdController {
 
             @Override
             public void onAdClicked() {
+                releaseSystemUiIfNeeded(host.getPluginActivity());
                 events.emit("interstitial", placementId, "clicked", null, "Interstitial clicked.");
             }
 
@@ -147,6 +151,13 @@ public class InterstitialAdController {
             runtimeConfig.resolvePlacement(placementId),
             "interstitial"
         );
+    }
+
+    private void releaseSystemUiIfNeeded(Activity activity) {
+        if (!runtimeConfig.isReleaseSystemUiOnAdInteraction()) {
+            return;
+        }
+        SystemUiHelper.releaseForAdInteraction(activity);
     }
 
     public interface InterstitialHost {
