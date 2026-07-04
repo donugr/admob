@@ -1,0 +1,77 @@
+{
+  "name": "@donugr/admob",
+  "private": false,
+  "version": "0.1.0",
+  "description": "Standalone Capacitor AdMob plugin with consent, standard ads, native host ads, and inline banner host placements.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "author": "Donugr Teknomedia Nusantara <dev@donugr.id>",
+  "homepage": "https://github.com/donugr/admob#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/donugr/admob.git"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "bugs": {
+    "url": "https://github.com/donugr/admob/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "android/src/main/AndroidManifest.xml",
+    "android/src/main/java/**/*.java",
+    "android/src/main/res/**/*.xml",
+    "android/build.gradle",
+    "ios/DonugrAdmobPlugin.podspec",
+    "ios/Plugin/**/*.swift",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"import('node:fs').then(fs=>fs.rmSync('dist',{recursive:true,force:true}))\""
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/core": "^8.0.0",
+    "typescript": "^5.9.2"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "keywords": [
+    "capacitor",
+    "capacitor-plugin",
+    "admob",
+    "ump",
+    "gdpr",
+    "native-ads",
+    "inline-banner",
+    "android"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

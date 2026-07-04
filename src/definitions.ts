@@ -1,0 +1,171 @@
+import type { PluginListenerHandle } from "@capacitor/core"
+
+export type AdFormat = "banner" | "interstitial" | "rewarded" | "native" | "inline_banner" | "app_open"
+
+export type AvailabilityStatus = "ready" | "loading" | "not_ready" | "disabled" | "unsupported" | "error"
+
+export type ConsentStatus = "unknown" | "required" | "not_required" | "obtained" | "denied"
+
+export type TrackingAuthorizationStatus = "not_determined" | "restricted" | "denied" | "authorized" | "unsupported"
+
+export type ApplicationIdSource = "js" | "android_manifest" | "ios_plist" | "missing"
+
+export type MaxAdContentRating = "G" | "PG" | "T" | "MA" | ""
+
+export type BridgeResult<T = undefined> = {
+  ok: boolean
+  status?: AvailabilityStatus
+  code?: string
+  message?: string
+  data?: T
+}
+
+export type ConfigureOptions = {
+  enabled: boolean
+  testMode: boolean
+  applicationId?: string
+  placements?: Record<string, string>
+}
+
+export type RequestConfigurationOptions = {
+  maxAdContentRating?: MaxAdContentRating
+  tagForChildDirectedTreatment?: boolean | null
+  tagForUnderAgeOfConsent?: boolean | null
+  testDeviceIds?: string[]
+  appMuted?: boolean
+  appVolume?: number
+}
+
+export type ConsentInfo = {
+  status: ConsentStatus
+  canRequestAds: boolean
+  privacyOptionsRequired: boolean
+}
+
+export type RuntimeInfo = {
+  platform: "android" | "ios" | "web"
+  enabled: boolean
+  testMode: boolean
+  applicationIdConfigured: boolean
+  applicationIdSource: ApplicationIdSource
+  placementsConfigured: number
+  requestConfigurationConfigured: boolean
+  consentStatus: ConsentStatus
+  activeSlots?: number
+  loadingSlots?: number
+  readySlots?: number
+  attachedSlots?: number
+  failedSlots?: number
+  expiredSlots?: number
+  inlineBannerActiveSlots?: number
+  inlineBannerLoadingSlots?: number
+  inlineBannerReadySlots?: number
+  inlineBannerAttachedSlots?: number
+  inlineBannerFailedSlots?: number
+}
+
+export type BannerOptions = {
+  placementId: string
+  adUnitId?: string
+  position?: "top" | "bottom"
+}
+
+export type FullscreenOptions = {
+  placementId: string
+  adUnitId?: string
+}
+
+export type NativeHostAnchor = "top" | "bottom"
+
+export type NativeHostRect = {
+  x: number
+  y: number
+  width: number
+  height: number
+  anchor?: NativeHostAnchor
+}
+
+export type NativeOptions = {
+  placementId: string
+  slotId: string
+  hostId: string
+  adUnitId?: string
+  ttlMs?: number
+  hostRect?: NativeHostRect
+}
+
+export type InlineBannerOptions = {
+  placementId: string
+  slotId: string
+  hostId: string
+  adUnitId?: string
+  hostRect?: NativeHostRect
+}
+
+export type AdEventPhase =
+  | "loaded"
+  | "failed"
+  | "shown"
+  | "dismissed"
+  | "clicked"
+  | "impression"
+  | "reward_earned"
+  | "attached"
+  | "detached"
+  | "destroyed"
+  | "consent_updated"
+  | "preload_start"
+  | "preload_reused"
+  | "preload_skip_loading"
+  | "attach_skipped_same_host"
+  | "layout_skipped_same_rect"
+
+export type AdEvent = {
+  format: AdFormat
+  placementId: string
+  slotId?: string
+  phase: AdEventPhase
+  code?: string
+  message?: string
+}
+
+export type DonugrAdmobPlugin = {
+  configure(options: ConfigureOptions): Promise<BridgeResult>
+  configureRequest(options: RequestConfigurationOptions): Promise<BridgeResult>
+  getRuntimeInfo(): Promise<BridgeResult<RuntimeInfo>>
+  requestConsentInfo(): Promise<BridgeResult<ConsentInfo>>
+  showConsentFormIfRequired(): Promise<BridgeResult<ConsentInfo>>
+  showPrivacyOptions(): Promise<BridgeResult<ConsentInfo>>
+  getConsentStatus(): Promise<BridgeResult<ConsentInfo>>
+  resetConsentForTesting(): Promise<BridgeResult>
+  getTrackingAuthorizationStatus(): Promise<BridgeResult<{ status: TrackingAuthorizationStatus }>>
+  requestTrackingAuthorization(): Promise<BridgeResult<{ status: TrackingAuthorizationStatus }>>
+  loadBanner(options: BannerOptions): Promise<BridgeResult>
+  showBanner(options: BannerOptions): Promise<BridgeResult>
+  hideBanner(placementId: string): Promise<BridgeResult>
+  destroyBanner(placementId: string): Promise<BridgeResult>
+  preloadInterstitial(options: FullscreenOptions): Promise<BridgeResult>
+  isInterstitialReady(placementId: string): Promise<BridgeResult<{ ready: boolean }>>
+  showInterstitial(placementId: string): Promise<BridgeResult>
+  preloadRewarded(options: FullscreenOptions): Promise<BridgeResult>
+  isRewardedReady(placementId: string): Promise<BridgeResult<{ ready: boolean }>>
+  showRewarded(placementId: string): Promise<BridgeResult>
+  preloadAppOpen(options: FullscreenOptions): Promise<BridgeResult>
+  isAppOpenReady(placementId: string): Promise<BridgeResult<{ ready: boolean }>>
+  showAppOpen(placementId: string): Promise<BridgeResult>
+  preloadNative(options: NativeOptions): Promise<BridgeResult>
+  isNativeReady(slotId: string): Promise<BridgeResult<{ ready: boolean }>>
+  attachNative(options: NativeOptions): Promise<BridgeResult>
+  detachNative(slotId: string): Promise<BridgeResult>
+  destroyNative(slotId: string): Promise<BridgeResult>
+  refreshNative(options: NativeOptions): Promise<BridgeResult>
+  preloadInlineBanner(options: InlineBannerOptions): Promise<BridgeResult>
+  isInlineBannerReady(slotId: string): Promise<BridgeResult<{ ready: boolean }>>
+  attachInlineBanner(options: InlineBannerOptions): Promise<BridgeResult>
+  detachInlineBanner(slotId: string): Promise<BridgeResult>
+  destroyInlineBanner(slotId: string): Promise<BridgeResult>
+  refreshInlineBanner(options: InlineBannerOptions): Promise<BridgeResult>
+  clearAll(): Promise<BridgeResult>
+  addListener(eventName: "adEvent", listenerFunc: (event: AdEvent) => void): Promise<PluginListenerHandle>
+  removeAllListeners(): Promise<void>
+}
