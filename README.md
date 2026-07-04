@@ -403,6 +403,12 @@ Resolution order:
 2. `testAdPreset`
 3. `placements[placementId]`
 
+Important behavior:
+
+- if `testMode: true` and the consumer still passes an explicit `adUnitId`, that explicit `adUnitId` wins
+- this means a production ad unit ID will still be used if it is passed explicitly
+- for safe development behavior, do not send production `adUnitId` values when `testMode: true`; prefer `testAdPreset`, test placements, and Google test device configuration
+
 Compatibility note:
 
 - to avoid breaking existing integrations, Android keeps the legacy test-ad fallback when `testMode: true` and none of `adUnitId`, `testAdPreset`, or `placements[placementId]` resolves an ad unit
@@ -647,6 +653,31 @@ Built-in protections:
 
 Inline banner is separate from anchored banner. It is intended for scrolling content placements, not global sticky takeovers.
 
+Coordinate note for WebView-based apps:
+
+- `hostRect` is expected to come from the WebView viewport, such as `getBoundingClientRect()`
+- prefer using the exported `buildNativeHostRect(element)` helper so the same rounding rules are reused consistently
+- Android inline banner placement is still a native overlay, not true inline DOM rendering
+- the plugin normalizes `hostRect` relative to the Capacitor WebView before placing the native overlay
+- if the WebView layout changes because of scroll, resize, async content, keyboard, or orientation changes, the consumer should call `attachInlineBanner()` again with the latest rect
+- the plugin reuses the loaded ad view for relayout and skips tiny layout jitter where possible, but it does not automatically track DOM movement on every frame
+
+Recommended re-attach moments:
+
+- after the host element first becomes visible in the DOM
+- after list virtualization or infinite-scroll inserts content above the host
+- after route transitions or tab switches that relayout the WebView
+- after orientation changes
+- after keyboard open or close if the page shifts vertically
+- after image or async content loads that change the final host position
+
+Scale and viewport note:
+
+- `buildNativeHostRect(element)` uses `getBoundingClientRect()` and rounds to integer viewport pixels
+- this is the safest default for standard Capacitor WebView layouts and should be preferred over hand-built rect math
+- if a consumer applies custom zoom, non-standard viewport scaling, or transforms that visually move the host without changing normal layout flow, overlay alignment can still drift because Android is rendering a native overlay, not DOM content
+- when diagnosing a mismatch, compare the DOM host rect, `window.innerWidth`, and the inline banner debug messages emitted by the plugin to determine whether the issue is offset-related or scale-related
+
 Supported options:
 
 | Field | Type | Required | Notes |
@@ -702,6 +733,39 @@ Available inline banner methods:
 - `detachInlineBanner()`
 - `destroyInlineBanner()`
 - `refreshInlineBanner()`
+
+Minimal re-attach example with light throttling:
+
+```ts
+import { DonugrAdmob, buildNativeHostRect } from "@donugr/admob"
+
+const hostElement = document.querySelector("[data-inline-banner-host]")
+let reattachTimer: ReturnType<typeof setTimeout> | null = null
+
+async function reattachInlineBanner() {
+  if (!hostElement) return
+
+  await DonugrAdmob.attachInlineBanner({
+    placementId: "inline_feed_banner",
+    slotId: "feed.banner.1",
+    hostId: "feed.banner.host.1",
+    hostRect: buildNativeHostRect(hostElement),
+  })
+}
+
+function scheduleInlineBannerRelayout() {
+  if (reattachTimer) {
+    clearTimeout(reattachTimer)
+  }
+  reattachTimer = setTimeout(() => {
+    void reattachInlineBanner()
+  }, 80)
+}
+
+window.addEventListener("resize", scheduleInlineBannerRelayout, { passive: true })
+window.addEventListener("orientationchange", scheduleInlineBannerRelayout, { passive: true })
+document.addEventListener("scroll", scheduleInlineBannerRelayout, { passive: true })
+```
 
 Built-in protections:
 

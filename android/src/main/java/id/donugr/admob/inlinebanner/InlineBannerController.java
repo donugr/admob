@@ -20,6 +20,7 @@ import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
 import id.donugr.admob.util.HostOverlayHelper;
+import id.donugr.admob.util.HostOverlayHelper.InlineBannerLayoutContext;
 import id.donugr.admob.util.LayoutFingerprintHelper;
 import id.donugr.admob.util.RuntimeIdValidator;
 import id.donugr.admob.util.TestAdPresetResolver;
@@ -30,6 +31,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class InlineBannerController {
     private static final String HOST_CONTAINER_TAG_PREFIX = "donugr-admob:inline-banner:";
     private static final int DEFAULT_INLINE_MARGIN_DP = 16;
+    private static final int LAYOUT_JITTER_THRESHOLD_PX = 2;
 
     private final InlineBannerHost host;
     private final RuntimeConfig runtimeConfig;
@@ -74,7 +76,7 @@ public class InlineBannerController {
 
         Activity activity = host.getPluginActivity();
         if (activity == null) {
-            call.resolve(PluginResultHelper.failure("NOT_READY", "Activity is unavailable for inline banner preload.", "not_ready"));
+            call.resolve(PluginResultHelper.failure("ACTIVITY_UNAVAILABLE", "Activity is unavailable for inline banner preload.", "not_ready"));
             return;
         }
 
@@ -82,14 +84,16 @@ public class InlineBannerController {
         runOnUiThreadBlocking(activity, () -> {
             AdView adView = createAdView(activity, options);
             if (adView == null) {
-                slot.markFailed("NOT_READY", "Unable to create inline banner view.");
-                notifyInlineBannerFailed(slot, "NOT_READY", slot.lastErrorMessage);
-                resultRef.set(PluginResultHelper.failure("NOT_READY", slot.lastErrorMessage, "not_ready"));
+                String code = "ADVIEW_UNAVAILABLE";
+                String message = "Unable to create inline banner view. " + buildGeometrySummary(options, null);
+                slot.markFailed(code, message);
+                notifyInlineBannerFailed(slot, code, slot.lastErrorMessage);
+                resultRef.set(PluginResultHelper.failure(code, slot.lastErrorMessage, "not_ready"));
                 return;
             }
 
             long requestToken = slot.markLoading(adView);
-            notifyInlineBannerDebug(options.placementId, options.slotId, "preload_start", "Inline banner preload started.");
+            notifyInlineBannerDebug(options.placementId, options.slotId, "preload_start", "Inline banner preload started. " + buildGeometrySummary(options, null));
             startLoad(slot, requestToken);
             resultRef.set(PluginResultHelper.success("loading"));
         });
@@ -121,52 +125,115 @@ public class InlineBannerController {
         }
 
         InlineBannerSlotState slot = slotStore.get(options.slotId);
-        if (slot == null || !slot.isReady()) {
-            call.resolve(PluginResultHelper.failure("NOT_READY", "Inline banner slot is not ready yet.", "not_ready"));
+        if (slot == null) {
+            notifyInlineBannerDebug(options.placementId, options.slotId, "preload_skip_loading", "Inline banner attach failed because the slot does not exist. " + buildGeometrySummary(options, null));
+            call.resolve(PluginResultHelper.failure("SLOT_NOT_FOUND", "Inline banner slot does not exist yet.", "not_ready"));
+            return;
+        }
+        if (!slot.isReady()) {
+            String message = "Inline banner slot is not ready yet. state=" + slot.status +
+                ", loading=" + slot.loading +
+                ", lastErrorCode=" + slot.lastErrorCode +
+                ", lastErrorMessage=" + slot.lastErrorMessage;
+            notifyInlineBannerDebug(options.placementId, options.slotId, "preload_skip_loading", message + " " + buildGeometrySummary(options, null));
+            call.resolve(PluginResultHelper.failure("SLOT_NOT_READY", message, "not_ready"));
             return;
         }
 
         Activity activity = host.getPluginActivity();
         if (activity == null) {
-            slot.markFailed("NOT_READY", "Activity is unavailable for inline banner attach.");
-            notifyInlineBannerFailed(slot, "NOT_READY", slot.lastErrorMessage);
-            call.resolve(PluginResultHelper.failure("NOT_READY", slot.lastErrorMessage, "not_ready"));
+            slot.markFailed("ACTIVITY_UNAVAILABLE", "Activity is unavailable for inline banner attach.");
+            notifyInlineBannerFailed(slot, "ACTIVITY_UNAVAILABLE", slot.lastErrorMessage);
+            call.resolve(PluginResultHelper.failure("ACTIVITY_UNAVAILABLE", slot.lastErrorMessage, "not_ready"));
             return;
         }
 
-        String hostFingerprint = buildHostRectFingerprint(options);
+        ViewGroup contentRoot = activity.findViewById(android.R.id.content);
+        if (contentRoot == null) {
+            String message = "Unable to resolve inline banner content root. " + buildGeometrySummary(options, null);
+            slot.markFailed("HOST_CONTAINER_UNAVAILABLE", message);
+            notifyInlineBannerFailed(slot, "HOST_CONTAINER_UNAVAILABLE", slot.lastErrorMessage);
+            call.resolve(PluginResultHelper.failure("HOST_CONTAINER_UNAVAILABLE", slot.lastErrorMessage, "not_ready"));
+            return;
+        }
+
+        View bridgeWebView = host.getBridgeWebView();
+        if (bridgeWebView == null) {
+            String message = "Capacitor bridge WebView is unavailable for inline banner attach. " + buildGeometrySummary(options, null);
+            slot.markFailed("WEBVIEW_UNAVAILABLE", message);
+            notifyInlineBannerFailed(slot, "WEBVIEW_UNAVAILABLE", slot.lastErrorMessage);
+            call.resolve(PluginResultHelper.failure("WEBVIEW_UNAVAILABLE", slot.lastErrorMessage, "not_ready"));
+            return;
+        }
+
+        InlineBannerLayoutContext layoutContext = HostOverlayHelper.createInlineBannerLayoutContext(
+            contentRoot,
+            bridgeWebView,
+            options.hostX,
+            options.hostY,
+            options.hostWidth,
+            options.hostHeight,
+            options.hostAnchor
+        );
+        String geometrySummary = buildGeometrySummary(options, layoutContext);
+
+        if (layoutContext.partialRect) {
+            String message = "hostRect must include x, y, and width when any explicit inline hostRect values are provided. " + geometrySummary;
+            slot.markFailed("HOST_RECT_INVALID", message);
+            notifyInlineBannerFailed(slot, "HOST_RECT_INVALID", slot.lastErrorMessage);
+            call.resolve(PluginResultHelper.failure("HOST_RECT_INVALID", slot.lastErrorMessage, "error"));
+            return;
+        }
+
+        if (layoutContext.hasExplicitRect() && !layoutContext.measurable) {
+            String message = "Unable to measure WebView/content root for inline banner hostRect normalization. " + geometrySummary;
+            slot.markFailed("WEBVIEW_UNAVAILABLE", message);
+            notifyInlineBannerFailed(slot, "WEBVIEW_UNAVAILABLE", slot.lastErrorMessage);
+            call.resolve(PluginResultHelper.failure("WEBVIEW_UNAVAILABLE", slot.lastErrorMessage, "not_ready"));
+            return;
+        }
+
+        if (layoutContext.hasExplicitRect() && layoutContext.fullyOutOfBounds) {
+            String message = "Normalized inline banner hostRect is fully outside the visible native root. " + geometrySummary;
+            slot.markFailed("HOST_RECT_OUT_OF_BOUNDS", message);
+            notifyInlineBannerFailed(slot, "HOST_RECT_OUT_OF_BOUNDS", slot.lastErrorMessage);
+            call.resolve(PluginResultHelper.failure("HOST_RECT_OUT_OF_BOUNDS", slot.lastErrorMessage, "not_ready"));
+            return;
+        }
+
+        String hostFingerprint = buildHostRectFingerprint(options, layoutContext);
         if (
             slot.isAttachedToHost(options.hostId, hostFingerprint) &&
             slot.adView != null &&
             slot.adView.getParent() instanceof ViewGroup
         ) {
-            notifyInlineBannerDebug(options.placementId, options.slotId, "layout_skipped_same_rect", "Inline banner host layout unchanged for this slot.");
-            notifyInlineBannerDebug(options.placementId, options.slotId, "attach_skipped_same_host", "Inline banner attach skipped because the slot is already attached to the same host.");
+            notifyInlineBannerDebug(options.placementId, options.slotId, "layout_skipped_same_rect", "Inline banner host layout unchanged for this slot. " + geometrySummary);
+            notifyInlineBannerDebug(options.placementId, options.slotId, "attach_skipped_same_host", "Inline banner attach skipped because the slot is already attached to the same host. " + geometrySummary);
             call.resolve(PluginResultHelper.success("ready"));
             return;
         }
 
         AtomicReference<JSObject> resultRef = new AtomicReference<>();
         runOnUiThreadBlocking(activity, () -> {
-            FrameLayout hostContainer = resolveHostContainer(options);
+            FrameLayout hostContainer = resolveHostContainer(contentRoot, options, layoutContext);
             if (hostContainer == null) {
-                slot.markFailed("NOT_READY", "Unable to resolve inline banner host container.");
-                notifyInlineBannerFailed(slot, "NOT_READY", slot.lastErrorMessage);
-                resultRef.set(PluginResultHelper.failure("NOT_READY", slot.lastErrorMessage, "not_ready"));
+                slot.markFailed("HOST_CONTAINER_UNAVAILABLE", "Unable to resolve inline banner host container. " + geometrySummary);
+                notifyInlineBannerFailed(slot, "HOST_CONTAINER_UNAVAILABLE", slot.lastErrorMessage);
+                resultRef.set(PluginResultHelper.failure("HOST_CONTAINER_UNAVAILABLE", slot.lastErrorMessage, "not_ready"));
                 return;
             }
 
             cleanupSlotView(slot);
             if (slot.adView == null) {
-                slot.markFailed("NOT_READY", "Inline banner view is unavailable.");
-                notifyInlineBannerFailed(slot, "NOT_READY", slot.lastErrorMessage);
-                resultRef.set(PluginResultHelper.failure("NOT_READY", slot.lastErrorMessage, "not_ready"));
+                slot.markFailed("ADVIEW_UNAVAILABLE", "Inline banner view is unavailable. " + geometrySummary);
+                notifyInlineBannerFailed(slot, "ADVIEW_UNAVAILABLE", slot.lastErrorMessage);
+                resultRef.set(PluginResultHelper.failure("ADVIEW_UNAVAILABLE", slot.lastErrorMessage, "not_ready"));
                 return;
             }
 
-            boolean changed = applyHostContainerLayout(hostContainer, options);
+            boolean changed = applyHostContainerLayout(hostContainer, options, layoutContext);
             if (!changed) {
-                notifyInlineBannerDebug(options.placementId, options.slotId, "layout_skipped_same_rect", "Inline banner host layout unchanged for this slot.");
+                notifyInlineBannerDebug(options.placementId, options.slotId, "layout_skipped_same_rect", "Inline banner host layout unchanged for this slot after normalization. " + geometrySummary);
             }
 
             hostContainer.removeAllViews();
@@ -174,7 +241,7 @@ public class InlineBannerController {
             hostContainer.addView(slot.adView);
             slot.updateIdentity(options.placementId, options.hostId, options.adUnitId);
             slot.markAttached(options.hostId, hostFingerprint);
-            notifyInlineBannerAttached(slot, "Inline banner attached.");
+            notifyInlineBannerAttached(slot, "Inline banner attached. " + geometrySummary);
             resultRef.set(PluginResultHelper.success("ready"));
         });
 
@@ -491,6 +558,11 @@ public class InlineBannerController {
             return options.hostWidth;
         }
 
+        View webView = host.getBridgeWebView();
+        if (webView != null && webView.getWidth() > 0) {
+            return webView.getWidth();
+        }
+
         View rootView = activity.findViewById(android.R.id.content);
         if (rootView != null && rootView.getWidth() > 0) {
             return rootView.getWidth();
@@ -534,17 +606,20 @@ public class InlineBannerController {
         return "bottom".equals(anchor) ? "bottom" : "top";
     }
 
-    private String buildHostRectFingerprint(InlineBannerCallOptions options) {
-        return LayoutFingerprintHelper.buildHostFingerprint(
-            options.hostX,
-            options.hostY,
-            options.hostWidth,
-            options.hostHeight,
-            options.hostAnchor
-        );
+    private String buildHostRectFingerprint(InlineBannerCallOptions options, InlineBannerLayoutContext layoutContext) {
+        if (layoutContext != null && layoutContext.hasExplicitRect()) {
+            return LayoutFingerprintHelper.buildHostFingerprint(
+                layoutContext.appliedLeft,
+                layoutContext.appliedTop,
+                layoutContext.appliedWidth,
+                options.hostHeight,
+                options.hostAnchor
+            );
+        }
+        return LayoutFingerprintHelper.buildHostFingerprint(options.hostX, options.hostY, options.hostWidth, options.hostHeight, options.hostAnchor);
     }
 
-    private boolean applyHostContainerLayout(FrameLayout hostContainer, InlineBannerCallOptions options) {
+    private boolean applyHostContainerLayout(FrameLayout hostContainer, InlineBannerCallOptions options, InlineBannerLayoutContext layoutContext) {
         FrameLayout.LayoutParams existingParams = hostContainer.getLayoutParams() instanceof FrameLayout.LayoutParams
             ? (FrameLayout.LayoutParams) hostContainer.getLayoutParams()
             : null;
@@ -555,17 +630,13 @@ public class InlineBannerController {
             )
             : new FrameLayout.LayoutParams(existingParams);
 
-        if (options.hostX != null && options.hostY != null && options.hostWidth != null && options.hostWidth > 0) {
-            params.width = options.hostWidth;
+        if (layoutContext != null && layoutContext.hasExplicitRect()) {
+            params.width = layoutContext.appliedWidth;
             params.height = FrameLayout.LayoutParams.WRAP_CONTENT;
             params.gravity = Gravity.TOP | Gravity.START;
-            params.leftMargin = Math.max(0, options.hostX);
+            params.leftMargin = layoutContext.appliedLeft;
             params.rightMargin = 0;
-            int anchoredTop = Math.max(0, options.hostY);
-            if ("bottom".equals(options.hostAnchor) && options.hostHeight != null && options.hostHeight > 0) {
-                anchoredTop += options.hostHeight;
-            }
-            params.topMargin = anchoredTop;
+            params.topMargin = layoutContext.appliedTop;
             params.bottomMargin = 0;
         } else {
             params.width = FrameLayout.LayoutParams.MATCH_PARENT;
@@ -590,35 +661,34 @@ public class InlineBannerController {
             return false;
         }
 
-        return current.width == next.width &&
+        return withinThreshold(current.width, next.width) &&
             current.height == next.height &&
             current.gravity == next.gravity &&
-            current.leftMargin == next.leftMargin &&
-            current.topMargin == next.topMargin &&
-            current.rightMargin == next.rightMargin &&
-            current.bottomMargin == next.bottomMargin;
+            withinThreshold(current.leftMargin, next.leftMargin) &&
+            withinThreshold(current.topMargin, next.topMargin) &&
+            withinThreshold(current.rightMargin, next.rightMargin) &&
+            withinThreshold(current.bottomMargin, next.bottomMargin);
     }
 
-    private FrameLayout resolveHostContainer(InlineBannerCallOptions options) {
-        Activity activity = host.getPluginActivity();
-        if (activity == null) {
-            return null;
-        }
+    private boolean withinThreshold(int current, int next) {
+        return Math.abs(current - next) <= LAYOUT_JITTER_THRESHOLD_PX;
+    }
 
-        ViewGroup contentRoot = activity.findViewById(android.R.id.content);
-        if (contentRoot == null) {
-            return null;
-        }
-
+    private FrameLayout resolveHostContainer(ViewGroup contentRoot, InlineBannerCallOptions options, InlineBannerLayoutContext layoutContext) {
         String overlayTag = HostOverlayHelper.buildOverlayTag(HOST_CONTAINER_TAG_PREFIX, options.hostId);
         View existing = contentRoot.findViewWithTag(overlayTag);
         if (existing instanceof FrameLayout) {
             return (FrameLayout) existing;
         }
 
+        Activity activity = host.getPluginActivity();
+        if (activity == null) {
+            return null;
+        }
+
         FrameLayout hostContainer = new FrameLayout(activity);
         hostContainer.setTag(overlayTag);
-        applyHostContainerLayout(hostContainer, options);
+        applyHostContainerLayout(hostContainer, options, layoutContext);
         hostContainer.setClickable(false);
         hostContainer.setFocusable(false);
         contentRoot.addView(hostContainer);
@@ -763,6 +833,16 @@ public class InlineBannerController {
         notifyInlineBannerEvent(placementId, slotId, phase, null, message);
     }
 
+    private String buildGeometrySummary(InlineBannerCallOptions options, InlineBannerLayoutContext layoutContext) {
+        String base = "placementId=" + options.placementId +
+            ", slotId=" + options.slotId +
+            ", hostId=" + options.hostId;
+        if (layoutContext == null) {
+            return base + ", rawHostRect={x=" + options.hostX + ", y=" + options.hostY + ", width=" + options.hostWidth + ", height=" + options.hostHeight + ", anchor=" + options.hostAnchor + "}";
+        }
+        return base + ", " + layoutContext.describeRawRect() + ", " + layoutContext.describeNormalizedRect() + ", " + layoutContext.describeEnvironment();
+    }
+
     private static class InlineBannerCallOptions {
         final String placementId;
         final String slotId;
@@ -800,6 +880,7 @@ public class InlineBannerController {
     public interface InlineBannerHost {
         android.content.Context getPluginContext();
         Activity getPluginActivity();
+        View getBridgeWebView();
         String requireTrimmed(PluginCall call, String key);
     }
 }

@@ -6,6 +6,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.view.View;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -74,6 +75,11 @@ public class DonugrAdmobPlugin extends Plugin implements
     @Override
     public Activity getPluginActivity() {
         return getActivity();
+    }
+
+    @Override
+    public View getBridgeWebView() {
+        return getBridge() == null ? null : getBridge().getWebView();
     }
 
     @Override
