@@ -12,13 +12,12 @@ import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class InterstitialAdController {
-    private static final String TEST_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712";
-
     private final InterstitialHost host;
     private final RuntimeConfig runtimeConfig;
     private final AdEventDispatcher events;
@@ -38,7 +37,15 @@ public class InterstitialAdController {
         }
 
         final String placementId = host.requireTrimmed(call, "placementId");
-        final String adUnitId = resolveAdUnitId(placementId, host.requireTrimmed(call, "adUnitId"));
+        final String adUnitId = resolveAdUnitId(
+            call,
+            placementId,
+            host.requireTrimmed(call, "adUnitId"),
+            host.requireTrimmed(call, "testAdPreset")
+        );
+        if (adUnitId == null) {
+            return;
+        }
         if (TextUtils.isEmpty(placementId) || TextUtils.isEmpty(adUnitId)) {
             call.resolve(PluginResultHelper.failure("CONFIG_MISSING", "Missing placementId or interstitial ad unit id.", "error"));
             return;
@@ -131,14 +138,15 @@ public class InterstitialAdController {
         });
     }
 
-    private String resolveAdUnitId(String placementId, String explicitAdUnitId) {
-        if (runtimeConfig.isTestMode()) {
-            return TEST_INTERSTITIAL_AD_UNIT_ID;
-        }
-        if (explicitAdUnitId != null && !explicitAdUnitId.isEmpty()) {
-            return explicitAdUnitId;
-        }
-        return runtimeConfig.resolvePlacement(placementId);
+    private String resolveAdUnitId(PluginCall call, String placementId, String explicitAdUnitId, String testAdPreset) {
+        return TestAdPresetResolver.resolve(
+            call,
+            runtimeConfig.isTestMode(),
+            explicitAdUnitId,
+            testAdPreset,
+            runtimeConfig.resolvePlacement(placementId),
+            "interstitial"
+        );
     }
 
     public interface InterstitialHost {

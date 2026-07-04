@@ -12,6 +12,15 @@ export type ApplicationIdSource = "js" | "android_manifest" | "ios_plist" | "mis
 
 export type MaxAdContentRating = "G" | "PG" | "T" | "MA" | ""
 
+export type TestAdPreset =
+  | "app_open"
+  | "banner_fixed"
+  | "banner_adaptive"
+  | "banner_inline_adaptive"
+  | "interstitial"
+  | "rewarded"
+  | "native"
+
 export type BridgeResult<T = undefined> = {
   ok: boolean
   status?: AvailabilityStatus
@@ -34,6 +43,15 @@ export type RequestConfigurationOptions = {
   testDeviceIds?: string[]
   appMuted?: boolean
   appVolume?: number
+}
+
+export const DEFAULT_REQUEST_CONFIGURATION_OPTIONS: Readonly<Required<Pick<
+  RequestConfigurationOptions,
+  "maxAdContentRating" | "tagForChildDirectedTreatment" | "tagForUnderAgeOfConsent"
+>> & Partial<Pick<RequestConfigurationOptions, "testDeviceIds" | "appMuted" | "appVolume">>> = {
+  maxAdContentRating: "",
+  tagForChildDirectedTreatment: null,
+  tagForUnderAgeOfConsent: null,
 }
 
 export type ConsentInfo = {
@@ -67,12 +85,14 @@ export type RuntimeInfo = {
 export type BannerOptions = {
   placementId: string
   adUnitId?: string
+  testAdPreset?: Extract<TestAdPreset, "banner_fixed" | "banner_adaptive">
   position?: "top" | "bottom"
 }
 
 export type FullscreenOptions = {
   placementId: string
   adUnitId?: string
+  testAdPreset?: Extract<TestAdPreset, "app_open" | "interstitial" | "rewarded">
 }
 
 export type NativeHostAnchor = "top" | "bottom"
@@ -90,6 +110,7 @@ export type NativeOptions = {
   slotId: string
   hostId: string
   adUnitId?: string
+  testAdPreset?: Extract<TestAdPreset, "native">
   ttlMs?: number
   hostRect?: NativeHostRect
 }
@@ -99,6 +120,7 @@ export type InlineBannerOptions = {
   slotId: string
   hostId: string
   adUnitId?: string
+  testAdPreset?: Extract<TestAdPreset, "banner_inline_adaptive">
   hostRect?: NativeHostRect
 }
 

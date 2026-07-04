@@ -15,7 +15,7 @@
     "url": "https://github.com/donugr/admob.git"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=20.0.0"
   },
   "bugs": {
     "url": "https://github.com/donugr/admob/issues"
@@ -67,6 +67,7 @@
     "admob",
     "ump",
     "gdpr",
+    "ios",
     "native-ads",
     "inline-banner",
     "android"

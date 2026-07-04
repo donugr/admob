@@ -22,13 +22,13 @@ import id.donugr.admob.events.AdEventDispatcher;
 import id.donugr.admob.util.HostOverlayHelper;
 import id.donugr.admob.util.LayoutFingerprintHelper;
 import id.donugr.admob.util.RuntimeIdValidator;
+import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class InlineBannerController {
     private static final String HOST_CONTAINER_TAG_PREFIX = "donugr-admob:inline-banner:";
-    private static final String TEST_INLINE_BANNER_AD_UNIT_ID = "ca-app-pub-3940256099942544/6300978111";
     private static final int DEFAULT_INLINE_MARGIN_DP = 16;
 
     private final InlineBannerHost host;
@@ -309,6 +309,7 @@ public class InlineBannerController {
         String slotId = host.requireTrimmed(call, "slotId");
         String hostId = host.requireTrimmed(call, "hostId");
         String explicitAdUnitId = host.requireTrimmed(call, "adUnitId");
+        String testAdPreset = host.requireTrimmed(call, "testAdPreset");
         JSObject hostRect = call.getObject("hostRect");
         Integer hostX = parseOptionalInt(hostRect, "x");
         Integer hostY = parseOptionalInt(hostRect, "y");
@@ -346,7 +347,10 @@ public class InlineBannerController {
             return null;
         }
 
-        String adUnitId = resolveAdUnitId(placementId, explicitAdUnitId);
+        String adUnitId = resolveAdUnitId(call, placementId, explicitAdUnitId, testAdPreset);
+        if (adUnitId == null) {
+            return null;
+        }
         if (TextUtils.isEmpty(adUnitId)) {
             call.resolve(PluginResultHelper.failure("CONFIG_MISSING", "Missing ad unit id for inline banner placement \"" + placementId + "\".", "error"));
             return null;
@@ -379,14 +383,15 @@ public class InlineBannerController {
         return slot != null && slot.isReady();
     }
 
-    private String resolveAdUnitId(String placementId, String explicitAdUnitId) {
-        if (runtimeConfig.isTestMode()) {
-            return TEST_INLINE_BANNER_AD_UNIT_ID;
-        }
-        if (!TextUtils.isEmpty(explicitAdUnitId)) {
-            return explicitAdUnitId.trim();
-        }
-        return runtimeConfig.resolvePlacement(placementId);
+    private String resolveAdUnitId(PluginCall call, String placementId, String explicitAdUnitId, String testAdPreset) {
+        return TestAdPresetResolver.resolve(
+            call,
+            runtimeConfig.isTestMode(),
+            explicitAdUnitId,
+            testAdPreset,
+            runtimeConfig.resolvePlacement(placementId),
+            "inline_banner"
+        );
     }
 
     private void startLoad(InlineBannerSlotState slot, long requestToken) {

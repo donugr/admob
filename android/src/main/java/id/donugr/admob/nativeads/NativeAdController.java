@@ -31,12 +31,12 @@ import id.donugr.admob.events.AdEventDispatcher;
 import id.donugr.admob.util.HostOverlayHelper;
 import id.donugr.admob.util.LayoutFingerprintHelper;
 import id.donugr.admob.util.RuntimeIdValidator;
+import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class NativeAdController {
-    private static final String TEST_NATIVE_AD_UNIT_ID = "ca-app-pub-3940256099942544/2247696110";
     private static final int DEFAULT_NATIVE_MARGIN_DP = 16;
     private static final String HOST_CONTAINER_TAG_PREFIX = "donugr-admob:host:";
     private static final long DEFAULT_NATIVE_TTL_MS = 60000L;
@@ -319,6 +319,7 @@ public class NativeAdController {
         String slotId = host.requireTrimmed(call, "slotId");
         String hostId = host.requireTrimmed(call, "hostId");
         String explicitAdUnitId = host.requireTrimmed(call, "adUnitId");
+        String testAdPreset = host.requireTrimmed(call, "testAdPreset");
         long ttlMs = sanitizeTtlMs(call.getLong("ttlMs", DEFAULT_NATIVE_TTL_MS));
         JSObject hostRect = call.getObject("hostRect");
         Integer hostX = parseOptionalInt(hostRect, "x");
@@ -357,7 +358,10 @@ public class NativeAdController {
             return null;
         }
 
-        String adUnitId = resolveNativeAdUnitId(placementId, explicitAdUnitId);
+        String adUnitId = resolveNativeAdUnitId(call, placementId, explicitAdUnitId, testAdPreset);
+        if (adUnitId == null) {
+            return null;
+        }
         if (TextUtils.isEmpty(adUnitId)) {
             call.resolve(PluginResultHelper.failure("CONFIG_MISSING", "Missing ad unit id for native placement \"" + placementId + "\".", "error"));
             return null;
@@ -480,14 +484,15 @@ public class NativeAdController {
         return "bottom".equals(anchor) ? "bottom" : "top";
     }
 
-    private String resolveNativeAdUnitId(String placementId, String explicitAdUnitId) {
-        if (runtimeConfig.isTestMode()) {
-            return TEST_NATIVE_AD_UNIT_ID;
-        }
-        if (!TextUtils.isEmpty(explicitAdUnitId)) {
-            return explicitAdUnitId.trim();
-        }
-        return runtimeConfig.resolvePlacement(placementId);
+    private String resolveNativeAdUnitId(PluginCall call, String placementId, String explicitAdUnitId, String testAdPreset) {
+        return TestAdPresetResolver.resolve(
+            call,
+            runtimeConfig.isTestMode(),
+            explicitAdUnitId,
+            testAdPreset,
+            runtimeConfig.resolvePlacement(placementId),
+            "native"
+        );
     }
 
     private String buildHostRectFingerprint(NativeCallOptions options) {

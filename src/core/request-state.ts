@@ -1,10 +1,14 @@
-import type { RequestConfigurationOptions } from "../definitions"
+import {
+  DEFAULT_REQUEST_CONFIGURATION_OPTIONS,
+  type RequestConfigurationOptions,
+} from "../definitions"
 
 export class RequestConfigurationStore {
-  private state: RequestConfigurationOptions = {}
+  private state: RequestConfigurationOptions = { ...DEFAULT_REQUEST_CONFIGURATION_OPTIONS }
 
   getSnapshot(): RequestConfigurationOptions {
     return {
+      ...DEFAULT_REQUEST_CONFIGURATION_OPTIONS,
       ...this.state,
       testDeviceIds: this.state.testDeviceIds ? [...this.state.testDeviceIds] : undefined,
     }
@@ -12,6 +16,7 @@ export class RequestConfigurationStore {
 
   configure(options: RequestConfigurationOptions) {
     this.state = {
+      ...DEFAULT_REQUEST_CONFIGURATION_OPTIONS,
       ...options,
       testDeviceIds: options.testDeviceIds ? [...options.testDeviceIds] : undefined,
     }
@@ -22,6 +27,6 @@ export class RequestConfigurationStore {
   }
 
   reset() {
-    this.state = {}
+    this.state = { ...DEFAULT_REQUEST_CONFIGURATION_OPTIONS }
   }
 }

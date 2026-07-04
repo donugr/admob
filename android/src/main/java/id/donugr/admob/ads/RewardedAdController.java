@@ -13,13 +13,12 @@ import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class RewardedAdController {
-    private static final String TEST_REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/5224354917";
-
     private final RewardedHost host;
     private final RuntimeConfig runtimeConfig;
     private final AdEventDispatcher events;
@@ -39,7 +38,15 @@ public class RewardedAdController {
         }
 
         final String placementId = host.requireTrimmed(call, "placementId");
-        final String adUnitId = resolveAdUnitId(placementId, host.requireTrimmed(call, "adUnitId"));
+        final String adUnitId = resolveAdUnitId(
+            call,
+            placementId,
+            host.requireTrimmed(call, "adUnitId"),
+            host.requireTrimmed(call, "testAdPreset")
+        );
+        if (adUnitId == null) {
+            return;
+        }
         if (TextUtils.isEmpty(placementId) || TextUtils.isEmpty(adUnitId)) {
             call.resolve(PluginResultHelper.failure("CONFIG_MISSING", "Missing placementId or rewarded ad unit id.", "error"));
             return;
@@ -139,14 +146,15 @@ public class RewardedAdController {
         });
     }
 
-    private String resolveAdUnitId(String placementId, String explicitAdUnitId) {
-        if (runtimeConfig.isTestMode()) {
-            return TEST_REWARDED_AD_UNIT_ID;
-        }
-        if (explicitAdUnitId != null && !explicitAdUnitId.isEmpty()) {
-            return explicitAdUnitId;
-        }
-        return runtimeConfig.resolvePlacement(placementId);
+    private String resolveAdUnitId(PluginCall call, String placementId, String explicitAdUnitId, String testAdPreset) {
+        return TestAdPresetResolver.resolve(
+            call,
+            runtimeConfig.isTestMode(),
+            explicitAdUnitId,
+            testAdPreset,
+            runtimeConfig.resolvePlacement(placementId),
+            "rewarded"
+        );
     }
 
     public interface RewardedHost {

@@ -17,12 +17,12 @@ import com.google.android.gms.ads.LoadAdError;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class BannerAdController {
     private static final String BANNER_HOST_PREFIX = "donugr-admob:banner:";
-    private static final String TEST_BANNER_AD_UNIT_ID = "ca-app-pub-3940256099942544/6300978111";
 
     private final BannerHost host;
     private final RuntimeConfig runtimeConfig;
@@ -50,7 +50,15 @@ public class BannerAdController {
 
         final String placementId = host.requireTrimmed(call, "placementId");
         final String position = "top".equals(host.requireTrimmed(call, "position")) ? "top" : "bottom";
-        final String adUnitId = resolveAdUnitId(placementId, host.requireTrimmed(call, "adUnitId"));
+        final String adUnitId = resolveAdUnitId(
+            call,
+            placementId,
+            host.requireTrimmed(call, "adUnitId"),
+            host.requireTrimmed(call, "testAdPreset")
+        );
+        if (adUnitId == null) {
+            return;
+        }
         if (TextUtils.isEmpty(placementId) || TextUtils.isEmpty(adUnitId)) {
             call.resolve(PluginResultHelper.failure("CONFIG_MISSING", "Missing placementId or banner ad unit id.", "error"));
             return;
@@ -138,14 +146,15 @@ public class BannerAdController {
         }
     }
 
-    private String resolveAdUnitId(String placementId, String explicitAdUnitId) {
-        if (runtimeConfig.isTestMode()) {
-            return TEST_BANNER_AD_UNIT_ID;
-        }
-        if (explicitAdUnitId != null && !explicitAdUnitId.isEmpty()) {
-            return explicitAdUnitId;
-        }
-        return runtimeConfig.resolvePlacement(placementId);
+    private String resolveAdUnitId(PluginCall call, String placementId, String explicitAdUnitId, String testAdPreset) {
+        return TestAdPresetResolver.resolve(
+            call,
+            runtimeConfig.isTestMode(),
+            explicitAdUnitId,
+            testAdPreset,
+            runtimeConfig.resolvePlacement(placementId),
+            "banner"
+        );
     }
 
     private int resolveAdaptiveBannerWidth(Activity activity) {

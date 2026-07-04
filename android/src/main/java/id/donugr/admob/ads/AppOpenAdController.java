@@ -12,13 +12,13 @@ import com.google.android.gms.ads.appopen.AppOpenAd.AppOpenAdLoadCallback;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Date;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class AppOpenAdController {
-    private static final String TEST_APP_OPEN_AD_UNIT_ID = "ca-app-pub-3940256099942544/9257395921";
     private static final long APP_OPEN_MAX_AGE_MS = 4L * 60L * 60L * 1000L;
 
     private final AppOpenHost host;
@@ -41,7 +41,15 @@ public class AppOpenAdController {
         }
 
         final String placementId = host.requireTrimmed(call, "placementId");
-        final String adUnitId = resolveAdUnitId(placementId, host.requireTrimmed(call, "adUnitId"));
+        final String adUnitId = resolveAdUnitId(
+            call,
+            placementId,
+            host.requireTrimmed(call, "adUnitId"),
+            host.requireTrimmed(call, "testAdPreset")
+        );
+        if (adUnitId == null) {
+            return;
+        }
         if (TextUtils.isEmpty(placementId) || TextUtils.isEmpty(adUnitId)) {
             call.resolve(PluginResultHelper.failure("CONFIG_MISSING", "Missing placementId or app open ad unit id.", "error"));
             return;
@@ -146,14 +154,15 @@ public class AppOpenAdController {
         });
     }
 
-    private String resolveAdUnitId(String placementId, String explicitAdUnitId) {
-        if (runtimeConfig.isTestMode()) {
-            return TEST_APP_OPEN_AD_UNIT_ID;
-        }
-        if (explicitAdUnitId != null && !explicitAdUnitId.isEmpty()) {
-            return explicitAdUnitId;
-        }
-        return runtimeConfig.resolvePlacement(placementId);
+    private String resolveAdUnitId(PluginCall call, String placementId, String explicitAdUnitId, String testAdPreset) {
+        return TestAdPresetResolver.resolve(
+            call,
+            runtimeConfig.isTestMode(),
+            explicitAdUnitId,
+            testAdPreset,
+            runtimeConfig.resolvePlacement(placementId),
+            "app_open"
+        );
     }
 
     public interface AppOpenHost {
