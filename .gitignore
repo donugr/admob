@@ -90,3 +90,4 @@ debug.log
 /*.md
 !/README.md
 git-commit-push.mjs
+npmPublish.mjs
