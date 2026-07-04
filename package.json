@@ -43,7 +43,9 @@
   "scripts": {
     "clean": "node -e \"import('node:fs').then(fs=>fs.rmSync('dist',{recursive:true,force:true}))\"",
     "build": "npm run clean && tsc -p tsconfig.json",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "verify:pack": "npm pack --dry-run",
+    "release:check": "npm run build && npm run verify:pack"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.0.0"
