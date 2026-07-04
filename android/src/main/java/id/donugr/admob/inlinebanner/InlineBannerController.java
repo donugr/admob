@@ -33,6 +33,8 @@ public class InlineBannerController {
     private static final String HOST_CONTAINER_TAG_PREFIX = "donugr-admob:inline-banner:";
     private static final int DEFAULT_INLINE_MARGIN_DP = 16;
     private static final int LAYOUT_JITTER_THRESHOLD_PX = 2;
+    private static final long DUPLICATE_LOADED_WINDOW_MS = 1500L;
+    private static final long DUPLICATE_IMPRESSION_WINDOW_MS = 2500L;
 
     private final InlineBannerHost host;
     private final RuntimeConfig runtimeConfig;
@@ -475,6 +477,10 @@ public class InlineBannerController {
                 if (current == null || !current.matchesActiveRequest(requestToken)) {
                     return;
                 }
+                if (shouldSuppressLoadedEvent(current)) {
+                    notifyInlineBannerDebug(current.placementId, current.slotId, "inline_loaded_duplicate_ignored", "Duplicate inline banner loaded event ignored for the active slot.");
+                    return;
+                }
 
                 current.markReady();
                 notifyInlineBannerLoaded(current, "Inline banner loaded.");
@@ -484,6 +490,17 @@ public class InlineBannerController {
             public void onAdFailedToLoad(LoadAdError loadAdError) {
                 InlineBannerSlotState current = slotStore.get(slot.slotId);
                 if (current == null || !current.matchesActiveRequest(requestToken)) {
+                    return;
+                }
+                if (shouldSuppressFailedAfterReady(current)) {
+                    notifyInlineBannerDebug(
+                        current.placementId,
+                        current.slotId,
+                        "inline_failed_after_ready_ignored",
+                        "Inline banner failed callback ignored because the slot is already ready/attached for the same request. code=" +
+                            loadAdError.getCode() +
+                            ", message=" + loadAdError.getMessage()
+                    );
                     return;
                 }
 
@@ -522,6 +539,10 @@ public class InlineBannerController {
             public void onAdImpression() {
                 InlineBannerSlotState current = slotStore.get(slot.slotId);
                 if (current != null) {
+                    if (shouldSuppressImpressionEvent(current)) {
+                        notifyInlineBannerDebug(current.placementId, current.slotId, "inline_impression_duplicate_ignored", "Duplicate inline banner impression event ignored for the active slot.");
+                        return;
+                    }
                     notifyInlineBannerImpression(current);
                 }
             }
@@ -808,31 +829,74 @@ public class InlineBannerController {
     }
 
     private void notifyInlineBannerLoaded(InlineBannerSlotState slot, String message) {
+        if (slot != null) {
+            slot.recordLoadedEmission(System.currentTimeMillis());
+        }
         notifyInlineBannerEvent(slot.placementId, slot.slotId, "loaded", null, message);
     }
 
     private void notifyInlineBannerFailed(InlineBannerSlotState slot, String code, String message) {
+        if (slot != null) {
+            slot.recordEmittedPhase("failed");
+        }
         notifyInlineBannerEvent(slot.placementId, slot.slotId, "failed", code, message);
     }
 
     private void notifyInlineBannerAttached(InlineBannerSlotState slot, String message) {
+        if (slot != null) {
+            slot.recordEmittedPhase("attached");
+        }
         notifyInlineBannerEvent(slot.placementId, slot.slotId, "attached", null, message);
     }
 
     private void notifyInlineBannerDetached(InlineBannerSlotState slot, String message) {
+        if (slot != null) {
+            slot.recordEmittedPhase("detached");
+        }
         notifyInlineBannerEvent(slot.placementId, slot.slotId, "detached", null, message);
     }
 
     private void notifyInlineBannerClicked(InlineBannerSlotState slot) {
+        if (slot != null) {
+            slot.recordEmittedPhase("clicked");
+        }
         notifyInlineBannerEvent(slot.placementId, slot.slotId, "clicked", null, "Inline banner clicked.");
     }
 
     private void notifyInlineBannerImpression(InlineBannerSlotState slot) {
+        if (slot != null) {
+            slot.recordImpressionEmission(System.currentTimeMillis());
+        }
         notifyInlineBannerEvent(slot.placementId, slot.slotId, "impression", null, "Inline banner impression recorded.");
     }
 
     private void notifyInlineBannerDebug(String placementId, String slotId, String phase, String message) {
         notifyInlineBannerEvent(placementId, slotId, phase, null, message);
+    }
+
+    private boolean shouldSuppressLoadedEvent(InlineBannerSlotState slot) {
+        if (slot == null || slot.lastLoadedAtEpochMs <= 0L) {
+            return false;
+        }
+        long nowMs = System.currentTimeMillis();
+        return nowMs - slot.lastLoadedAtEpochMs <= DUPLICATE_LOADED_WINDOW_MS;
+    }
+
+    private boolean shouldSuppressImpressionEvent(InlineBannerSlotState slot) {
+        if (slot == null || slot.lastImpressionAtEpochMs <= 0L) {
+            return false;
+        }
+        long nowMs = System.currentTimeMillis();
+        return nowMs - slot.lastImpressionAtEpochMs <= DUPLICATE_IMPRESSION_WINDOW_MS;
+    }
+
+    private boolean shouldSuppressFailedAfterReady(InlineBannerSlotState slot) {
+        if (slot == null) {
+            return false;
+        }
+        return InlineBannerSlotState.STATUS_READY.equals(slot.status) ||
+            InlineBannerSlotState.STATUS_ATTACHED.equals(slot.status) ||
+            slot.lastLoadedAtEpochMs > 0L;
     }
 
     private String buildGeometrySummary(InlineBannerCallOptions options, InlineBannerLayoutContext layoutContext) {

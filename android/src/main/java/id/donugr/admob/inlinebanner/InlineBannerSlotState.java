@@ -22,6 +22,9 @@ class InlineBannerSlotState {
     long requestCounter;
     String attachedHostId;
     String attachedHostFingerprint;
+    long lastLoadedAtEpochMs;
+    long lastImpressionAtEpochMs;
+    String lastEmittedPhase;
 
     InlineBannerSlotState(String slotId) {
         this.slotId = slotId;
@@ -37,6 +40,9 @@ class InlineBannerSlotState {
         this.requestCounter = 0L;
         this.attachedHostId = "";
         this.attachedHostFingerprint = "";
+        this.lastLoadedAtEpochMs = 0L;
+        this.lastImpressionAtEpochMs = 0L;
+        this.lastEmittedPhase = "";
     }
 
     void updateIdentity(String placementId, String hostId, String adUnitId) {
@@ -61,6 +67,7 @@ class InlineBannerSlotState {
         this.loading = true;
         this.lastErrorCode = "";
         this.lastErrorMessage = "";
+        resetEmissionGuards();
         this.requestCounter += 1L;
         this.activeRequestToken = this.requestCounter;
         return this.activeRequestToken;
@@ -94,6 +101,26 @@ class InlineBannerSlotState {
         this.loading = false;
         this.lastErrorCode = code == null ? "" : code;
         this.lastErrorMessage = message == null ? "" : message;
+    }
+
+    void recordEmittedPhase(String phase) {
+        this.lastEmittedPhase = phase == null ? "" : phase;
+    }
+
+    void recordLoadedEmission(long nowMs) {
+        this.lastLoadedAtEpochMs = nowMs;
+        recordEmittedPhase("loaded");
+    }
+
+    void recordImpressionEmission(long nowMs) {
+        this.lastImpressionAtEpochMs = nowMs;
+        recordEmittedPhase("impression");
+    }
+
+    void resetEmissionGuards() {
+        this.lastLoadedAtEpochMs = 0L;
+        this.lastImpressionAtEpochMs = 0L;
+        this.lastEmittedPhase = "";
     }
 
     void clearAdReference() {

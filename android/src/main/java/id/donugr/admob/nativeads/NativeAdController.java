@@ -44,6 +44,8 @@ public class NativeAdController {
     private static final long DEFAULT_NATIVE_TTL_MS = 60000L;
     private static final long MIN_NATIVE_TTL_MS = 1000L;
     private static final long MAX_NATIVE_TTL_MS = 3600000L;
+    private static final long DUPLICATE_LOADED_WINDOW_MS = 1500L;
+    private static final long DUPLICATE_IMPRESSION_WINDOW_MS = 2500L;
 
     private final NativeHost host;
     private final RuntimeConfig runtimeConfig;
@@ -427,6 +429,11 @@ public class NativeAdController {
                     nativeAd.destroy();
                     return;
                 }
+                if (shouldSuppressLoadedEvent(current)) {
+                    nativeAd.destroy();
+                    notifyNativeDebug(current.placementId, current.slotId, "native_loaded_duplicate_ignored", "Duplicate native loaded event ignored for the active slot.");
+                    return;
+                }
 
                 current.markReady(nativeAd, System.currentTimeMillis());
                 notifyNativeLoaded(current, buildNativeLoadedMessage(current));
@@ -450,6 +457,10 @@ public class NativeAdController {
                 public void onAdImpression() {
                     NativeSlotState current = slotStore.get(slot.slotId);
                     if (current != null) {
+                        if (shouldSuppressImpressionEvent(current)) {
+                            notifyNativeDebug(current.placementId, current.slotId, "native_impression_duplicate_ignored", "Duplicate native impression event ignored for the active slot.");
+                            return;
+                        }
                         notifyNativeImpression(current);
                     }
                 }
@@ -459,6 +470,17 @@ public class NativeAdController {
                     activity.runOnUiThread(() -> {
                         NativeSlotState current = slotStore.get(slot.slotId);
                         if (current == null || !current.matchesActiveRequest(requestToken)) {
+                            return;
+                        }
+                        if (shouldSuppressFailedAfterReady(current)) {
+                            notifyNativeDebug(
+                                current.placementId,
+                                current.slotId,
+                                "native_failed_after_ready_ignored",
+                                "Native failed callback ignored because the slot is already ready/attached for the same request. code=" +
+                                    loadAdError.getCode() +
+                                    ", message=" + loadAdError.getMessage()
+                            );
                             return;
                         }
 
@@ -533,26 +555,44 @@ public class NativeAdController {
     }
 
     private void notifyNativeLoaded(NativeSlotState slot, String message) {
+        if (slot != null) {
+            slot.recordLoadedEmission(System.currentTimeMillis());
+        }
         notifyNativeEvent(slot.placementId, slot.slotId, "loaded", null, message);
     }
 
     private void notifyNativeFailed(NativeSlotState slot, String code, String message) {
+        if (slot != null) {
+            slot.recordEmittedPhase("failed");
+        }
         notifyNativeEvent(slot.placementId, slot.slotId, "failed", code, message);
     }
 
     private void notifyNativeAttached(NativeSlotState slot, String message) {
+        if (slot != null) {
+            slot.recordEmittedPhase("attached");
+        }
         notifyNativeEvent(slot.placementId, slot.slotId, "attached", null, message);
     }
 
     private void notifyNativeDetached(NativeSlotState slot, String message) {
+        if (slot != null) {
+            slot.recordEmittedPhase("detached");
+        }
         notifyNativeEvent(slot.placementId, slot.slotId, "detached", null, message);
     }
 
     private void notifyNativeClicked(NativeSlotState slot) {
+        if (slot != null) {
+            slot.recordEmittedPhase("clicked");
+        }
         notifyNativeEvent(slot.placementId, slot.slotId, "clicked", null, "Native ad clicked.");
     }
 
     private void notifyNativeImpression(NativeSlotState slot) {
+        if (slot != null) {
+            slot.recordImpressionEmission(System.currentTimeMillis());
+        }
         notifyNativeEvent(slot.placementId, slot.slotId, "impression", null, "Native ad impression recorded.");
     }
 
@@ -581,6 +621,29 @@ public class NativeAdController {
             slot.nativeAd != null &&
             slot.nativeAd.getMediaContent() != null &&
             slot.nativeAd.getMediaContent().hasVideoContent();
+    }
+
+    private boolean shouldSuppressLoadedEvent(NativeSlotState slot) {
+        if (slot == null || slot.lastLoadedEventAtEpochMs <= 0L) {
+            return false;
+        }
+        return System.currentTimeMillis() - slot.lastLoadedEventAtEpochMs <= DUPLICATE_LOADED_WINDOW_MS;
+    }
+
+    private boolean shouldSuppressImpressionEvent(NativeSlotState slot) {
+        if (slot == null || slot.lastImpressionEventAtEpochMs <= 0L) {
+            return false;
+        }
+        return System.currentTimeMillis() - slot.lastImpressionEventAtEpochMs <= DUPLICATE_IMPRESSION_WINDOW_MS;
+    }
+
+    private boolean shouldSuppressFailedAfterReady(NativeSlotState slot) {
+        if (slot == null) {
+            return false;
+        }
+        return NativeSlotState.STATUS_READY.equals(slot.status) ||
+            NativeSlotState.STATUS_ATTACHED.equals(slot.status) ||
+            slot.lastLoadedEventAtEpochMs > 0L;
     }
 
     private void releaseSystemUiIfNeeded(Activity activity) {

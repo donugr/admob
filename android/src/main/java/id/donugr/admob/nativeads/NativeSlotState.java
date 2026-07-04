@@ -27,6 +27,9 @@ class NativeSlotState {
     boolean loading;
     long activeRequestToken;
     long requestCounter;
+    long lastLoadedEventAtEpochMs;
+    long lastImpressionEventAtEpochMs;
+    String lastEmittedPhase;
 
     NativeSlotState(String slotId) {
         this.slotId = slotId;
@@ -46,6 +49,9 @@ class NativeSlotState {
         this.loading = false;
         this.activeRequestToken = 0L;
         this.requestCounter = 0L;
+        this.lastLoadedEventAtEpochMs = 0L;
+        this.lastImpressionEventAtEpochMs = 0L;
+        this.lastEmittedPhase = "";
     }
 
     void updateIdentity(String placementId, String hostId, String adUnitId, String mediaMode, long ttlMs) {
@@ -84,6 +90,7 @@ class NativeSlotState {
         loadedAtEpochMs = 0L;
         lastErrorCode = "";
         lastErrorMessage = "";
+        resetEmissionGuards();
         requestCounter += 1L;
         activeRequestToken = requestCounter;
         return activeRequestToken;
@@ -123,6 +130,26 @@ class NativeSlotState {
         this.loadedAtEpochMs = 0L;
         this.lastErrorCode = code == null ? "" : code;
         this.lastErrorMessage = message == null ? "" : message;
+    }
+
+    void recordEmittedPhase(String phase) {
+        this.lastEmittedPhase = phase == null ? "" : phase;
+    }
+
+    void recordLoadedEmission(long nowMs) {
+        this.lastLoadedEventAtEpochMs = nowMs;
+        recordEmittedPhase("loaded");
+    }
+
+    void recordImpressionEmission(long nowMs) {
+        this.lastImpressionEventAtEpochMs = nowMs;
+        recordEmittedPhase("impression");
+    }
+
+    void resetEmissionGuards() {
+        this.lastLoadedEventAtEpochMs = 0L;
+        this.lastImpressionEventAtEpochMs = 0L;
+        this.lastEmittedPhase = "";
     }
 
     void clearAdReference() {
