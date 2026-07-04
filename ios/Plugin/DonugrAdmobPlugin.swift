@@ -26,6 +26,9 @@ public class DonugrAdmobPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "preloadRewarded", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isRewardedReady", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "showRewarded", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "preloadRewardedInterstitial", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "isRewardedInterstitialReady", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "showRewardedInterstitial", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "preloadAppOpen", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isAppOpenReady", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "showAppOpen", returnType: CAPPluginReturnPromise),
@@ -122,6 +125,18 @@ public class DonugrAdmobPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc public func showRewarded(_ call: CAPPluginCall) {
         resolveUnsupported(call, method: "showRewarded")
+    }
+
+    @objc public func preloadRewardedInterstitial(_ call: CAPPluginCall) {
+        resolveUnsupported(call, method: "preloadRewardedInterstitial")
+    }
+
+    @objc public func isRewardedInterstitialReady(_ call: CAPPluginCall) {
+        resolveUnsupported(call, method: "isRewardedInterstitialReady")
+    }
+
+    @objc public func showRewardedInterstitial(_ call: CAPPluginCall) {
+        resolveUnsupported(call, method: "showRewardedInterstitial")
     }
 
     @objc public func preloadAppOpen(_ call: CAPPluginCall) {

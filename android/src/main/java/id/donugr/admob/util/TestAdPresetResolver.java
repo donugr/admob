@@ -11,14 +11,18 @@ public final class TestAdPresetResolver {
     public static final String PRESET_BANNER_INLINE_ADAPTIVE = "banner_inline_adaptive";
     public static final String PRESET_INTERSTITIAL = "interstitial";
     public static final String PRESET_REWARDED = "rewarded";
+    public static final String PRESET_REWARDED_INTERSTITIAL = "rewarded_interstitial";
     public static final String PRESET_NATIVE = "native";
+    public static final String PRESET_NATIVE_VIDEO = "native_video";
 
     private static final String TEST_APP_OPEN_AD_UNIT_ID = "ca-app-pub-3940256099942544/9257395921";
     private static final String TEST_BANNER_FIXED_AD_UNIT_ID = "ca-app-pub-3940256099942544/6300978111";
     private static final String TEST_BANNER_ADAPTIVE_AD_UNIT_ID = "ca-app-pub-3940256099942544/9214589741";
     private static final String TEST_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712";
     private static final String TEST_REWARDED_AD_UNIT_ID = "ca-app-pub-3940256099942544/5224354917";
+    private static final String TEST_REWARDED_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/5354046379";
     private static final String TEST_NATIVE_AD_UNIT_ID = "ca-app-pub-3940256099942544/2247696110";
+    private static final String TEST_NATIVE_VIDEO_AD_UNIT_ID = "ca-app-pub-3940256099942544/1044960115";
 
     private TestAdPresetResolver() {
     }
@@ -81,8 +85,18 @@ public final class TestAdPresetResolver {
             return PRESET_REWARDED.equals(preset) ? TEST_REWARDED_AD_UNIT_ID : null;
         }
 
+        if ("rewarded_interstitial".equals(format)) {
+            return PRESET_REWARDED_INTERSTITIAL.equals(preset) ? TEST_REWARDED_INTERSTITIAL_AD_UNIT_ID : null;
+        }
+
         if ("native".equals(format)) {
-            return PRESET_NATIVE.equals(preset) ? TEST_NATIVE_AD_UNIT_ID : null;
+            if (PRESET_NATIVE.equals(preset)) {
+                return TEST_NATIVE_AD_UNIT_ID;
+            }
+            if (PRESET_NATIVE_VIDEO.equals(preset)) {
+                return TEST_NATIVE_VIDEO_AD_UNIT_ID;
+            }
+            return null;
         }
 
         if ("banner".equals(format)) {
@@ -111,6 +125,9 @@ public final class TestAdPresetResolver {
         }
         if ("rewarded".equals(format)) {
             return TEST_REWARDED_AD_UNIT_ID;
+        }
+        if ("rewarded_interstitial".equals(format)) {
+            return TEST_REWARDED_INTERSTITIAL_AD_UNIT_ID;
         }
         if ("native".equals(format)) {
             return TEST_NATIVE_AD_UNIT_ID;

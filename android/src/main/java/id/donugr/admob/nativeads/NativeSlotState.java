@@ -14,6 +14,7 @@ class NativeSlotState {
     String placementId;
     String hostId;
     String adUnitId;
+    String mediaMode;
     long ttlMs;
     long loadedAtEpochMs;
     String status;
@@ -32,6 +33,7 @@ class NativeSlotState {
         this.placementId = "";
         this.hostId = "";
         this.adUnitId = "";
+        this.mediaMode = "auto";
         this.ttlMs = 0L;
         this.loadedAtEpochMs = 0L;
         this.status = STATUS_IDLE;
@@ -46,10 +48,11 @@ class NativeSlotState {
         this.requestCounter = 0L;
     }
 
-    void updateIdentity(String placementId, String hostId, String adUnitId, long ttlMs) {
+    void updateIdentity(String placementId, String hostId, String adUnitId, String mediaMode, long ttlMs) {
         this.placementId = placementId;
         this.hostId = hostId;
         this.adUnitId = adUnitId;
+        this.mediaMode = mediaMode == null || mediaMode.isEmpty() ? "auto" : mediaMode;
         this.ttlMs = ttlMs;
     }
 

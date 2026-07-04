@@ -19,6 +19,7 @@ import id.donugr.admob.ads.AppOpenAdController;
 import id.donugr.admob.ads.BannerAdController;
 import id.donugr.admob.ads.InterstitialAdController;
 import id.donugr.admob.ads.RewardedAdController;
+import id.donugr.admob.ads.RewardedInterstitialAdController;
 import id.donugr.admob.consent.AndroidConsentController;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
@@ -37,6 +38,7 @@ public class DonugrAdmobPlugin extends Plugin implements
     BannerAdController.BannerHost,
     InterstitialAdController.InterstitialHost,
     RewardedAdController.RewardedHost,
+    RewardedInterstitialAdController.RewardedInterstitialHost,
     AppOpenAdController.AppOpenHost,
     NativeAdController.NativeHost,
     InlineBannerController.InlineBannerHost,
@@ -49,6 +51,7 @@ public class DonugrAdmobPlugin extends Plugin implements
     private BannerAdController bannerController;
     private InterstitialAdController interstitialController;
     private RewardedAdController rewardedController;
+    private RewardedInterstitialAdController rewardedInterstitialController;
     private AppOpenAdController appOpenController;
     private NativeAdController nativeAdController;
     private InlineBannerController inlineBannerController;
@@ -61,6 +64,7 @@ public class DonugrAdmobPlugin extends Plugin implements
         bannerController = new BannerAdController(this, runtimeConfig, events);
         interstitialController = new InterstitialAdController(this, runtimeConfig, events);
         rewardedController = new RewardedAdController(this, runtimeConfig, events);
+        rewardedInterstitialController = new RewardedInterstitialAdController(this, runtimeConfig, events);
         appOpenController = new AppOpenAdController(this, runtimeConfig, events);
         nativeAdController = new NativeAdController(this, runtimeConfig, events);
         inlineBannerController = new InlineBannerController(this, runtimeConfig, events);
@@ -245,6 +249,21 @@ public class DonugrAdmobPlugin extends Plugin implements
     @PluginMethod
     public void showRewarded(PluginCall call) {
         rewardedController.show(call);
+    }
+
+    @PluginMethod
+    public void preloadRewardedInterstitial(PluginCall call) {
+        rewardedInterstitialController.preload(call);
+    }
+
+    @PluginMethod
+    public void isRewardedInterstitialReady(PluginCall call) {
+        rewardedInterstitialController.isReady(call);
+    }
+
+    @PluginMethod
+    public void showRewardedInterstitial(PluginCall call) {
+        rewardedInterstitialController.show(call);
     }
 
     @PluginMethod
@@ -446,6 +465,7 @@ public class DonugrAdmobPlugin extends Plugin implements
         bannerController.clearAll();
         interstitialController.clearAll();
         rewardedController.clearAll();
+        rewardedInterstitialController.clearAll();
         appOpenController.clearAll();
         nativeAdController.clearAll();
         inlineBannerController.clearAll();

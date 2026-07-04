@@ -11,6 +11,7 @@ import type {
   InlineBannerOptions,
   NativeOptions,
   RequestConfigurationOptions,
+  RewardedInterstitialOptions,
   RuntimeInfo,
   TrackingAuthorizationStatus,
 } from "./definitions"
@@ -36,6 +37,9 @@ type NativeBridge = {
   preloadRewarded(options: FullscreenOptions): Promise<BridgeResult>
   isRewardedReady(options: { placementId: string }): Promise<BridgeResult<{ ready: boolean }>>
   showRewarded(options: { placementId: string }): Promise<BridgeResult>
+  preloadRewardedInterstitial(options: RewardedInterstitialOptions): Promise<BridgeResult>
+  isRewardedInterstitialReady(options: { placementId: string }): Promise<BridgeResult<{ ready: boolean }>>
+  showRewardedInterstitial(options: { placementId: string }): Promise<BridgeResult>
   preloadAppOpen(options: FullscreenOptions): Promise<BridgeResult>
   isAppOpenReady(options: { placementId: string }): Promise<BridgeResult<{ ready: boolean }>>
   showAppOpen(options: { placementId: string }): Promise<BridgeResult>
@@ -77,6 +81,9 @@ const webBridge: NativeBridge = {
   preloadRewarded: (options) => pluginFacade.preloadRewarded(options),
   isRewardedReady: ({ placementId }) => pluginFacade.isRewardedReady(placementId),
   showRewarded: ({ placementId }) => pluginFacade.showRewarded(placementId),
+  preloadRewardedInterstitial: (options) => pluginFacade.preloadRewardedInterstitial(options),
+  isRewardedInterstitialReady: ({ placementId }) => pluginFacade.isRewardedInterstitialReady(placementId),
+  showRewardedInterstitial: ({ placementId }) => pluginFacade.showRewardedInterstitial(placementId),
   preloadAppOpen: (options) => pluginFacade.preloadAppOpen(options),
   isAppOpenReady: ({ placementId }) => pluginFacade.isAppOpenReady(placementId),
   showAppOpen: ({ placementId }) => pluginFacade.showAppOpen(placementId),

@@ -20,6 +20,7 @@ import com.google.android.gms.ads.AdLoader;
 import com.google.android.gms.ads.AdRequest;
 import com.google.android.gms.ads.LoadAdError;
 import com.google.android.gms.ads.VideoController;
+import com.google.android.gms.ads.VideoOptions;
 import com.google.android.gms.ads.nativead.MediaView;
 import com.google.android.gms.ads.nativead.NativeAd;
 import com.google.android.gms.ads.nativead.NativeAdOptions;
@@ -66,7 +67,7 @@ public class NativeAdController {
             return;
         }
 
-        NativeSlotState slot = getOrCreateSlot(options.slotId, options.placementId, options.hostId, options.adUnitId, options.ttlMs);
+        NativeSlotState slot = getOrCreateSlot(options.slotId, options.placementId, options.hostId, options.adUnitId, options.mediaMode, options.ttlMs);
         if (slot.isLoading()) {
             notifyNativeDebug(options.placementId, options.slotId, "preload_skip_loading", "Native preload skipped because this slot is already loading.");
             call.resolve(PluginResultHelper.success("loading"));
@@ -170,9 +171,9 @@ public class NativeAdController {
             }
             hostContainer.removeAllViews();
             hostContainer.addView(adView);
-            slot.updateIdentity(options.placementId, options.hostId, options.adUnitId, options.ttlMs);
+            slot.updateIdentity(options.placementId, options.hostId, options.adUnitId, options.mediaMode, options.ttlMs);
             slot.markAttached(options.hostId, hostRectFingerprint, adView);
-            notifyNativeAttached(slot, "Native ad attached.");
+            notifyNativeAttached(slot, buildNativeAttachedMessage(slot));
             resultRef.set(PluginResultHelper.success("ready"));
         });
 
@@ -242,7 +243,7 @@ public class NativeAdController {
         }
 
         cleanupAndRemoveSlot(options.slotId);
-        NativeSlotState slot = getOrCreateSlot(options.slotId, options.placementId, options.hostId, options.adUnitId, options.ttlMs);
+        NativeSlotState slot = getOrCreateSlot(options.slotId, options.placementId, options.hostId, options.adUnitId, options.mediaMode, options.ttlMs);
         long requestToken = slot.markLoading();
         notifyNativeDebug(options.placementId, options.slotId, "preload_start", "Native refresh started a new preload.");
         startNativeLoad(slot, requestToken);
@@ -320,6 +321,10 @@ public class NativeAdController {
         String hostId = host.requireTrimmed(call, "hostId");
         String explicitAdUnitId = host.requireTrimmed(call, "adUnitId");
         String testAdPreset = host.requireTrimmed(call, "testAdPreset");
+        String mediaMode = parseMediaMode(call);
+        if (TextUtils.isEmpty(mediaMode)) {
+            return null;
+        }
         long ttlMs = sanitizeTtlMs(call.getLong("ttlMs", DEFAULT_NATIVE_TTL_MS));
         JSObject hostRect = call.getObject("hostRect");
         Integer hostX = parseOptionalInt(hostRect, "x");
@@ -367,12 +372,12 @@ public class NativeAdController {
             return null;
         }
 
-        return new NativeCallOptions(placementId, slotId, hostId, adUnitId, ttlMs, hostX, hostY, hostWidth, hostHeight, hostAnchor);
+        return new NativeCallOptions(placementId, slotId, hostId, adUnitId, mediaMode, ttlMs, hostX, hostY, hostWidth, hostHeight, hostAnchor);
     }
 
-    private NativeSlotState getOrCreateSlot(String slotId, String placementId, String hostId, String adUnitId, long ttlMs) {
+    private NativeSlotState getOrCreateSlot(String slotId, String placementId, String hostId, String adUnitId, String mediaMode, long ttlMs) {
         NativeSlotState slot = slotStore.getOrCreate(slotId);
-        slot.updateIdentity(placementId, hostId, adUnitId, ttlMs);
+        slot.updateIdentity(placementId, hostId, adUnitId, mediaMode, ttlMs);
         slotStore.put(slot);
         return slot;
     }
@@ -423,9 +428,13 @@ public class NativeAdController {
                 }
 
                 current.markReady(nativeAd, System.currentTimeMillis());
-                notifyNativeLoaded(current, "Native ad loaded.");
+                notifyNativeLoaded(current, buildNativeLoadedMessage(current));
             }))
-            .withNativeAdOptions(new NativeAdOptions.Builder().build())
+            .withNativeAdOptions(
+                new NativeAdOptions.Builder()
+                    .setVideoOptions(new VideoOptions.Builder().setStartMuted(true).build())
+                    .build()
+            )
             .withAdListener(new AdListener() {
                 @Override
                 public void onAdClicked() {
@@ -484,6 +493,18 @@ public class NativeAdController {
         return "bottom".equals(anchor) ? "bottom" : "top";
     }
 
+    private String parseMediaMode(PluginCall call) {
+        String value = host.requireTrimmed(call, "mediaMode").toLowerCase();
+        if (TextUtils.isEmpty(value)) {
+            return "auto";
+        }
+        if ("auto".equals(value) || "video_preferred".equals(value)) {
+            return value;
+        }
+        call.resolve(PluginResultHelper.failure("CONFIG_INVALID", "mediaMode must be either \"auto\" or \"video_preferred\".", "error"));
+        return "";
+    }
+
     private String resolveNativeAdUnitId(PluginCall call, String placementId, String explicitAdUnitId, String testAdPreset) {
         return TestAdPresetResolver.resolve(
             call,
@@ -535,6 +556,29 @@ public class NativeAdController {
 
     private void notifyNativeDebug(String placementId, String slotId, String phase, String message) {
         notifyNativeEvent(placementId, slotId, phase, null, message);
+    }
+
+    private String buildNativeLoadedMessage(NativeSlotState slot) {
+        boolean hasVideo = hasVideoContent(slot);
+        if ("video_preferred".equals(slot.mediaMode) && !hasVideo) {
+            return "Native ad loaded without video content while mediaMode=video_preferred. Image fallback may be rendered.";
+        }
+        return hasVideo ? "Native ad loaded with video-capable media content." : "Native ad loaded.";
+    }
+
+    private String buildNativeAttachedMessage(NativeSlotState slot) {
+        boolean hasVideo = hasVideoContent(slot);
+        if ("video_preferred".equals(slot.mediaMode) && !hasVideo) {
+            return "Native ad attached with image fallback because the loaded creative did not include video content.";
+        }
+        return hasVideo ? "Native ad attached with video-capable media content." : "Native ad attached.";
+    }
+
+    private boolean hasVideoContent(NativeSlotState slot) {
+        return slot != null &&
+            slot.nativeAd != null &&
+            slot.nativeAd.getMediaContent() != null &&
+            slot.nativeAd.getMediaContent().hasVideoContent();
     }
 
     private int dpToPx(int dp) {
@@ -833,6 +877,7 @@ public class NativeAdController {
         final String slotId;
         final String hostId;
         final String adUnitId;
+        final String mediaMode;
         final long ttlMs;
         final Integer hostX;
         final Integer hostY;
@@ -845,6 +890,7 @@ public class NativeAdController {
             String slotId,
             String hostId,
             String adUnitId,
+            String mediaMode,
             long ttlMs,
             Integer hostX,
             Integer hostY,
@@ -856,6 +902,7 @@ public class NativeAdController {
             this.slotId = slotId;
             this.hostId = hostId;
             this.adUnitId = adUnitId;
+            this.mediaMode = mediaMode;
             this.ttlMs = ttlMs;
             this.hostX = hostX;
             this.hostY = hostY;

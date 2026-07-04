@@ -32,11 +32,20 @@ Current plugin support:
 | Banner | Supported | Anchored banner display for top or bottom placement |
 | Interstitial | Supported | Standard fullscreen interstitial |
 | Rewarded | Supported | Rewarded ad with reward-earned event |
+| Rewarded Interstitial | Supported | Fullscreen rewarded interstitial with reward-earned event |
 | App Open | Supported | App open fullscreen format |
 | Native | Supported | Host-based native placement engine |
+| Native Video | Supported through native host options | Use `preloadNative()` / `attachNative()` with `mediaMode: "video_preferred"` |
 | Inline Banner | Supported | Host-based inline adaptive banner placement |
-| Rewarded Interstitial | Not supported yet | Not exposed in the current public API |
-| Native Video preset | Not exposed separately | Native format may render video creatives, but there is no separate public format |
+
+Quick format guidance for app consumers:
+
+- use `Rewarded` when the user explicitly chooses to watch an ad for a reward
+- use `Rewarded Interstitial` when you still need an explicit reward flow, but want the fullscreen rewarded-interstitial format instead of standard rewarded
+- use `Interstitial` for natural transitions without reward
+- use `Native` for feed cards or embedded placement surfaces
+- use `Native` with `mediaMode: "video_preferred"` when the placement should prefer video-capable native creatives
+- use `Inline Banner` for scrolling content placements where the host position comes from the WebView layout
 
 ## API Index
 
@@ -86,6 +95,14 @@ Current plugin support:
 | `isRewardedReady(placementId)` | Check whether a rewarded ad is ready |
 | `showRewarded(placementId)` | Show a ready rewarded ad |
 
+### Rewarded Interstitial
+
+| Method | Purpose |
+| --- | --- |
+| `preloadRewardedInterstitial(options)` | Preload rewarded interstitial inventory |
+| `isRewardedInterstitialReady(placementId)` | Check whether a rewarded interstitial is ready |
+| `showRewardedInterstitial(placementId)` | Show a ready rewarded interstitial |
+
 ### App Open
 
 | Method | Purpose |
@@ -134,12 +151,12 @@ All plugin methods return a `Promise<BridgeResult<...>>`.
 | `configure()`, `configureRequest()`, `clearAll()` | `ready`, `disabled` | usually omitted |
 | `requestConsentInfo()`, `showConsentFormIfRequired()`, `showPrivacyOptions()`, `getConsentStatus()` | `ready`, `not_ready` | `ConsentInfo` |
 | `getTrackingAuthorizationStatus()`, `requestTrackingAuthorization()` | `ready`, `unsupported` | `{ status }` |
-| `preloadInterstitial()`, `preloadRewarded()`, `preloadAppOpen()`, `preloadNative()`, `preloadInlineBanner()` | `loading`, `ready`, `disabled`, `error` | usually omitted |
+| `preloadInterstitial()`, `preloadRewarded()`, `preloadRewardedInterstitial()`, `preloadAppOpen()`, `preloadNative()`, `preloadInlineBanner()` | `loading`, `ready`, `disabled`, `error` | usually omitted |
 | `showBanner()`, `hideBanner()`, `destroyBanner()` | `loading`, `ready`, `disabled`, `error` | usually omitted |
-| `showInterstitial()`, `showRewarded()`, `showAppOpen()` | `ready`, `not_ready`, `error` | usually omitted |
+| `showInterstitial()`, `showRewarded()`, `showRewardedInterstitial()`, `showAppOpen()` | `ready`, `not_ready`, `error` | usually omitted |
 | `attachNative()`, `detachNative()`, `destroyNative()`, `refreshNative()` | `ready`, `loading`, `not_ready`, `error` | usually omitted |
 | `attachInlineBanner()`, `detachInlineBanner()`, `destroyInlineBanner()`, `refreshInlineBanner()` | `ready`, `loading`, `not_ready`, `error` | usually omitted |
-| `isInterstitialReady()`, `isRewardedReady()`, `isAppOpenReady()`, `isNativeReady()`, `isInlineBannerReady()` | `ready`, `not_ready` | `{ ready: boolean }` |
+| `isInterstitialReady()`, `isRewardedReady()`, `isRewardedInterstitialReady()`, `isAppOpenReady()`, `isNativeReady()`, `isInlineBannerReady()` | `ready`, `not_ready` | `{ ready: boolean }` |
 | `getRuntimeInfo()` | `ready`, `disabled` | `RuntimeInfo` |
 
 ### Common Return Examples
@@ -226,6 +243,30 @@ await DonugrAdmob.configure({
   },
 })
 ```
+
+Production-oriented placement example:
+
+```ts
+await DonugrAdmob.configure({
+  enabled: true,
+  testMode: false,
+  placements: {
+    banner_home: "ca-app-pub-xxxx/banner-home",
+    interstitial_break: "ca-app-pub-xxxx/interstitial-break",
+    rewarded_bonus: "ca-app-pub-xxxx/rewarded-bonus",
+    rewarded_interstitial_bonus: "ca-app-pub-xxxx/rewarded-interstitial-bonus",
+    app_open_launch: "ca-app-pub-xxxx/app-open-launch",
+    native_feed_card: "ca-app-pub-xxxx/native-feed-card",
+    inline_feed_banner: "ca-app-pub-xxxx/inline-feed-banner",
+  },
+})
+```
+
+Consumer recommendation:
+
+- prefer placement mapping in `configure()` as the default production path
+- use `adUnitId` only when you intentionally need an explicit per-call override
+- avoid mixing production `adUnitId` overrides with `testMode: true`
 
 Keep `testMode: true` and use Google test ads or test devices during development.
 
@@ -388,7 +429,9 @@ Supported presets:
 - `banner_inline_adaptive`
 - `interstitial`
 - `rewarded`
+- `rewarded_interstitial`
 - `native`
+- `native_video`
 
 Rules:
 
@@ -442,6 +485,11 @@ await DonugrAdmob.preloadRewarded({
   testAdPreset: "rewarded",
 })
 
+await DonugrAdmob.preloadRewardedInterstitial({
+  placementId: "rewarded_interstitial_bonus",
+  testAdPreset: "rewarded_interstitial",
+})
+
 await DonugrAdmob.preloadAppOpen({
   placementId: "app_open_launch",
   testAdPreset: "app_open",
@@ -451,7 +499,8 @@ await DonugrAdmob.preloadNative({
   placementId: "native_feed_card",
   slotId: "feed.slot.1",
   hostId: "feed.card.1",
-  testAdPreset: "native",
+  testAdPreset: "native_video",
+  mediaMode: "video_preferred",
 })
 ```
 
@@ -462,8 +511,9 @@ Preset-to-method guidance:
 | `showBanner()` / `loadBanner()` | `banner_fixed`, `banner_adaptive` |
 | `preloadInterstitial()` | `interstitial` |
 | `preloadRewarded()` | `rewarded` |
+| `preloadRewardedInterstitial()` | `rewarded_interstitial` |
 | `preloadAppOpen()` | `app_open` |
-| `preloadNative()` | `native` |
+| `preloadNative()` | `native`, `native_video` |
 | `preloadInlineBanner()` | `banner_inline_adaptive` |
 
 ## Consent
@@ -556,6 +606,36 @@ if (ready.data?.ready) {
 
 Only grant rewards from the reward-earned path in your app logic.
 
+When to choose `Rewarded` vs `Rewarded Interstitial`:
+
+- choose `Rewarded` if your app already treats the ad as an explicit user action such as "watch to unlock"
+- choose `Rewarded Interstitial` if you want the rewarded outcome but prefer Google rewarded-interstitial inventory and presentation
+- in both cases, only grant the reward from the `reward_earned` event path
+
+### Rewarded Interstitial
+
+Supported preload options:
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `placementId` | `string` | Yes | Placement key used to resolve inventory |
+| `adUnitId` | `string` | No | Explicit override ad unit ID |
+| `testAdPreset` | `"rewarded_interstitial"` | No | Development-only preset when `testMode: true` |
+
+```ts
+await DonugrAdmob.preloadRewardedInterstitial({
+  placementId: "rewarded_interstitial_bonus",
+})
+
+const ready = await DonugrAdmob.isRewardedInterstitialReady("rewarded_interstitial_bonus")
+
+if (ready.data?.ready) {
+  await DonugrAdmob.showRewardedInterstitial("rewarded_interstitial_bonus")
+}
+```
+
+Use rewarded interstitial only where the reward exchange is explicit to the user, just like standard rewarded flow.
+
 ### App Open
 
 Supported preload options:
@@ -598,7 +678,8 @@ Supported options:
 | `slotId` | `string` | Yes | Runtime slot identity |
 | `hostId` | `string` | Yes | Logical host identity |
 | `adUnitId` | `string` | No | Explicit override ad unit ID |
-| `testAdPreset` | `"native"` | No | Development-only preset when `testMode: true` |
+| `testAdPreset` | `"native" \| "native_video"` | No | Development-only preset when `testMode: true` |
+| `mediaMode` | `"auto" \| "video_preferred"` | No | `video_preferred` asks for video-capable media when available, but image fallback remains valid |
 | `ttlMs` | `number` | No | Native slot lifetime before stale cleanup |
 | `hostRect.x` | `number` | No | Host left coordinate in px |
 | `hostRect.y` | `number` | No | Host top coordinate in px |
@@ -611,6 +692,7 @@ await DonugrAdmob.preloadNative({
   placementId: "native_feed_card",
   slotId: "feed.slot.1",
   hostId: "feed.card.1",
+  mediaMode: "video_preferred",
   ttlMs: 60000,
 })
 
@@ -631,6 +713,19 @@ if (ready.data?.ready) {
   })
 }
 ```
+
+Native video note:
+
+- native video is exposed through the native host engine, not as a separate top-level format
+- set `mediaMode: "video_preferred"` when the placement should prefer video-capable creatives
+- even with `mediaMode: "video_preferred"`, Google inventory may still return an image-native creative, so the consumer must treat image fallback as valid behavior
+
+Recommended consumer pattern:
+
+- use one placement identity for the feed surface, for example `native_feed_card`
+- use `mediaMode: "auto"` for general native slots
+- use `mediaMode: "video_preferred"` only on surfaces where video-native creatives make UX sense
+- design the host card so both video and image-native creatives look acceptable without layout breakage
 
 Available native methods:
 
@@ -1016,6 +1111,8 @@ Current Android runtime info includes:
 This plugin does not attempt to bypass, soften, or reinterpret Google AdMob policy.
 
 - always use test ads during development
+- for reward-based formats, make the reward contract explicit in the app UI before show
+- do not label a native placement as guaranteed video unless your app also handles image fallback correctly
 - do not inflate clicks or impressions
 - do not place interstitials at disruptive moments
 - do not grant rewarded outcomes before reward completion
@@ -1061,6 +1158,7 @@ Production format guidance:
 - `preloadNative()` uses Native ad units
 - `preloadInterstitial()` uses Interstitial ad units
 - `preloadRewarded()` uses Rewarded ad units
+- `preloadRewardedInterstitial()` uses Rewarded Interstitial ad units
 - `preloadAppOpen()` uses App Open ad units
 
 ## Public Package Direction

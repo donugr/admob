@@ -1,6 +1,6 @@
 import type { PluginListenerHandle } from "@capacitor/core"
 
-export type AdFormat = "banner" | "interstitial" | "rewarded" | "native" | "inline_banner" | "app_open"
+export type AdFormat = "banner" | "interstitial" | "rewarded" | "rewarded_interstitial" | "native" | "inline_banner" | "app_open"
 
 export type AvailabilityStatus = "ready" | "loading" | "not_ready" | "disabled" | "unsupported" | "error"
 
@@ -19,7 +19,9 @@ export type TestAdPreset =
   | "banner_inline_adaptive"
   | "interstitial"
   | "rewarded"
+  | "rewarded_interstitial"
   | "native"
+  | "native_video"
 
 export type BridgeResult<T = undefined> = {
   ok: boolean
@@ -95,6 +97,14 @@ export type FullscreenOptions = {
   testAdPreset?: Extract<TestAdPreset, "app_open" | "interstitial" | "rewarded">
 }
 
+export type RewardedInterstitialOptions = {
+  placementId: string
+  adUnitId?: string
+  testAdPreset?: Extract<TestAdPreset, "rewarded_interstitial">
+}
+
+export type NativeMediaMode = "auto" | "video_preferred"
+
 export type NativeHostAnchor = "top" | "bottom"
 
 export type NativeHostRect = {
@@ -110,9 +120,10 @@ export type NativeOptions = {
   slotId: string
   hostId: string
   adUnitId?: string
-  testAdPreset?: Extract<TestAdPreset, "native">
+  testAdPreset?: Extract<TestAdPreset, "native" | "native_video">
   ttlMs?: number
   hostRect?: NativeHostRect
+  mediaMode?: NativeMediaMode
 }
 
 export type InlineBannerOptions = {
@@ -172,6 +183,9 @@ export type DonugrAdmobPlugin = {
   preloadRewarded(options: FullscreenOptions): Promise<BridgeResult>
   isRewardedReady(placementId: string): Promise<BridgeResult<{ ready: boolean }>>
   showRewarded(placementId: string): Promise<BridgeResult>
+  preloadRewardedInterstitial(options: RewardedInterstitialOptions): Promise<BridgeResult>
+  isRewardedInterstitialReady(placementId: string): Promise<BridgeResult<{ ready: boolean }>>
+  showRewardedInterstitial(placementId: string): Promise<BridgeResult>
   preloadAppOpen(options: FullscreenOptions): Promise<BridgeResult>
   isAppOpenReady(placementId: string): Promise<BridgeResult<{ ready: boolean }>>
   showAppOpen(placementId: string): Promise<BridgeResult>

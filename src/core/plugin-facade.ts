@@ -10,6 +10,7 @@ import type {
   InlineBannerOptions,
   NativeOptions,
   RequestConfigurationOptions,
+  RewardedInterstitialOptions,
   RuntimeInfo,
   TrackingAuthorizationStatus,
 } from "../definitions"
@@ -146,6 +147,18 @@ async function showRewarded(_placementId: string): Promise<BridgeResult> {
   return unsupported("Rewarded show is reserved for the Android implementation batch.")
 }
 
+async function preloadRewardedInterstitial(_options: RewardedInterstitialOptions): Promise<BridgeResult> {
+  return unsupported("Rewarded interstitial preload is reserved for the Android implementation batch.")
+}
+
+async function isRewardedInterstitialReady(_placementId: string): Promise<BridgeResult<{ ready: boolean }>> {
+  return readyResult(false)
+}
+
+async function showRewardedInterstitial(_placementId: string): Promise<BridgeResult> {
+  return unsupported("Rewarded interstitial show is reserved for the Android implementation batch.")
+}
+
 async function preloadAppOpen(_options: FullscreenOptions): Promise<BridgeResult> {
   return unsupported("App open preload is reserved for the Android implementation batch.")
 }
@@ -254,6 +267,9 @@ export const pluginFacade: DonugrAdmobPlugin = {
   preloadRewarded,
   isRewardedReady,
   showRewarded,
+  preloadRewardedInterstitial,
+  isRewardedInterstitialReady,
+  showRewardedInterstitial,
   preloadAppOpen,
   isAppOpenReady,
   showAppOpen,
