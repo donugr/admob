@@ -1,5 +1,15 @@
-import type { DonugrAdmobPlugin } from "./definitions"
+import type { AdEvent, AdLogEvent, DonugrAdmobPlugin } from "./definitions"
+import type { PluginListenerHandle } from "@capacitor/core"
 import { nativeBridge } from "./native-bridge"
+
+function addListener(eventName: "adEvent", listenerFunc: (event: AdEvent) => void): Promise<PluginListenerHandle>
+function addListener(eventName: "adLog", listenerFunc: (event: AdLogEvent) => void): Promise<PluginListenerHandle>
+function addListener(
+  eventName: "adEvent" | "adLog",
+  listenerFunc: ((event: AdEvent) => void) | ((event: AdLogEvent) => void),
+): Promise<PluginListenerHandle> {
+  return nativeBridge.addListener(eventName as "adEvent", listenerFunc as (event: AdEvent) => void)
+}
 
 export const DonugrAdmob: DonugrAdmobPlugin = {
   configure: (options) => nativeBridge.configure(options),
@@ -41,7 +51,7 @@ export const DonugrAdmob: DonugrAdmobPlugin = {
   destroyInlineBanner: (slotId) => nativeBridge.destroyInlineBanner({ slotId }),
   refreshInlineBanner: (options) => nativeBridge.refreshInlineBanner(options),
   clearAll: () => nativeBridge.clearAll(),
-  addListener: (eventName, listenerFunc) => nativeBridge.addListener(eventName, listenerFunc),
+  addListener,
   removeAllListeners: () => nativeBridge.removeAllListeners(),
 }
 

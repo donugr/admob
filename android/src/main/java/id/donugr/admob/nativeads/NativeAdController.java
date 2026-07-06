@@ -71,6 +71,11 @@ public class NativeAdController {
         }
 
         NativeSlotState slot = getOrCreateSlot(options.slotId, options.placementId, options.hostId, options.adUnitId, options.mediaMode, options.ttlMs);
+        if (slot.isDisposed()) {
+            logNativeTransition("warn", options.placementId, options.slotId, options.hostId, "preload_skip_disposed", "Native preload skipped because this slot is already disposed.", null);
+            call.resolve(PluginResultHelper.success("not_ready"));
+            return;
+        }
         if (slot.isLoading()) {
             notifyNativeDebug(options.placementId, options.slotId, "preload_skip_loading", "Native preload skipped because this slot is already loading.");
             call.resolve(PluginResultHelper.success("loading"));
@@ -123,7 +128,14 @@ public class NativeAdController {
 
         NativeSlotState slot = slotStore.get(options.slotId);
         if (slot == null || !slot.isReady(System.currentTimeMillis())) {
+            logNativeTransition("warn", options.placementId, options.slotId, options.hostId, "attach_not_ready", "Native attach failed because the slot is not ready. state=" + (slot == null ? "missing" : slot.status) + ", loading=" + (slot != null && slot.loading) + ", lastErrorCode=" + (slot == null ? "" : slot.lastErrorCode) + ".", null);
             call.resolve(PluginResultHelper.failure("NOT_READY", "Native slot is not ready yet.", "not_ready"));
+            return;
+        }
+        logNativeTransition("info", options.placementId, options.slotId, options.hostId, "attach_start", "Native attach started.", null);
+        if (slot.isDisposed()) {
+            logNativeTransition("warn", options.placementId, options.slotId, options.hostId, "attach_skip_disposed", "Native attach skipped because this slot is already disposed.", null);
+            call.resolve(PluginResultHelper.failure("SLOT_DISPOSED", "Native slot is already disposed.", "not_ready"));
             return;
         }
 
@@ -136,11 +148,13 @@ public class NativeAdController {
         }
 
         String hostRectFingerprint = buildHostRectFingerprint(options);
+        logNativeGeometry("attach_prepare", options, null, null, hostRectFingerprint, false, false);
         if (
             slot.isAttachedToHost(options.hostId, hostRectFingerprint, System.currentTimeMillis()) &&
             slot.attachedView != null &&
             slot.attachedView.getParent() instanceof ViewGroup
         ) {
+            logNativeGeometry("attach_skipped_same_host", options, null, null, hostRectFingerprint, true, true);
             notifyNativeDebug(options.placementId, options.slotId, "layout_skipped_same_rect", "Native host layout unchanged for this slot.");
             notifyNativeDebug(options.placementId, options.slotId, "attach_skipped_same_host", "Native attach skipped because the slot is already attached to the same host.");
             call.resolve(PluginResultHelper.success("ready"));
@@ -151,6 +165,7 @@ public class NativeAdController {
         runOnUiThreadBlocking(activity, () -> {
             ViewGroup hostContainer = resolveNativeHostContainer(options);
             if (hostContainer == null) {
+                logNativeGeometry("attach_rejected_host_container_unavailable", options, null, null, hostRectFingerprint, false, false);
                 slot.markFailed("NOT_READY", "Unable to resolve native host container.");
                 notifyNativeFailed(slot, "NOT_READY", slot.lastErrorMessage);
                 resultRef.set(PluginResultHelper.failure("NOT_READY", slot.lastErrorMessage, "not_ready"));
@@ -160,14 +175,17 @@ public class NativeAdController {
             cleanupSlotView(slot);
             NativeAdView adView = createAndBindNativeAdView(slot);
             if (adView == null) {
+                logNativeGeometry("attach_rejected_adview_unavailable", options, hostContainer instanceof FrameLayout ? (FrameLayout) hostContainer : null, null, hostRectFingerprint, false, false);
                 slot.markFailed("NOT_READY", "Unable to inflate native ad view.");
                 notifyNativeFailed(slot, "NOT_READY", slot.lastErrorMessage);
                 resultRef.set(PluginResultHelper.failure("NOT_READY", slot.lastErrorMessage, "not_ready"));
                 return;
             }
 
+            FrameLayout resolvedFrame = hostContainer instanceof FrameLayout ? (FrameLayout) hostContainer : null;
             if (hostContainer instanceof FrameLayout) {
                 boolean changed = applyHostContainerLayout((FrameLayout) hostContainer, options);
+                logNativeGeometry("attach_layout_applied", options, resolvedFrame, adView, hostRectFingerprint, !changed, false);
                 if (!changed) {
                     notifyNativeDebug(options.placementId, options.slotId, "layout_skipped_same_rect", "Native host layout unchanged for this slot.");
                 }
@@ -176,6 +194,8 @@ public class NativeAdController {
             hostContainer.addView(adView);
             slot.updateIdentity(options.placementId, options.hostId, options.adUnitId, options.mediaMode, options.ttlMs);
             slot.markAttached(options.hostId, hostRectFingerprint, adView);
+            logNativeGeometry("attach_complete", options, resolvedFrame, adView, hostRectFingerprint, false, false);
+            logNativeTransition("debug", options.placementId, options.slotId, options.hostId, "state_transition", "Native state: " + slot.status + ".", null);
             notifyNativeAttached(slot, buildNativeAttachedMessage(slot));
             resultRef.set(PluginResultHelper.success("ready"));
         });
@@ -197,9 +217,16 @@ public class NativeAdController {
             call.resolve(PluginResultHelper.success("not_ready"));
             return;
         }
+        logNativeTransition("info", slot.placementId, slot.slotId, slot.hostId, "detach_start", "Native detach started.", null);
+        if (slot.isDisposed()) {
+            logNativeTransition("warn", slot.placementId, slot.slotId, slot.hostId, "detach_skip_disposed", "Native detach skipped because this slot is already disposed.", null);
+            call.resolve(PluginResultHelper.success("not_ready"));
+            return;
+        }
 
         cleanupSlotView(slot);
         slot.markDetached();
+        logNativeTransition("debug", slot.placementId, slot.slotId, slot.hostId, "state_transition", "Native state: " + slot.status + ".", null);
         notifyNativeDetached(slot, "Native slot detached.");
         call.resolve(PluginResultHelper.success(slot.isReady(System.currentTimeMillis()) ? "ready" : "not_ready"));
     }
@@ -214,6 +241,12 @@ public class NativeAdController {
 
         NativeSlotState slot = slotStore.get(slotId);
         if (slot != null) {
+            logNativeTransition("info", slot.placementId, slot.slotId, slot.hostId, "destroy_start", "Native destroy started.", null);
+            if (slot.isDisposed()) {
+                logNativeTransition("warn", slot.placementId, slot.slotId, slot.hostId, "destroy_skip_already_disposed", "Native destroy skipped because this slot is already disposed.", null);
+                call.resolve(PluginResultHelper.success("ready"));
+                return;
+            }
             notifyNativeEvent(slot.placementId, slot.slotId, "destroyed", null, "Native slot destroyed.");
         }
         cleanupAndRemoveSlot(slotId);
@@ -248,6 +281,7 @@ public class NativeAdController {
         cleanupAndRemoveSlot(options.slotId);
         NativeSlotState slot = getOrCreateSlot(options.slotId, options.placementId, options.hostId, options.adUnitId, options.mediaMode, options.ttlMs);
         long requestToken = slot.markLoading();
+        logNativeTransition("debug", options.placementId, options.slotId, options.hostId, "state_transition", "Native state: " + slot.status + ".", null);
         notifyNativeDebug(options.placementId, options.slotId, "preload_start", "Native refresh started a new preload.");
         startNativeLoad(slot, requestToken);
         call.resolve(PluginResultHelper.success("loading"));
@@ -429,6 +463,11 @@ public class NativeAdController {
                     nativeAd.destroy();
                     return;
                 }
+                if (current.isDisposed()) {
+                    nativeAd.destroy();
+                    logNativeTransition("warn", current.placementId, current.slotId, current.hostId, "callback_skip_disposed", "Native loaded callback ignored because the slot is already disposed.", null);
+                    return;
+                }
                 if (shouldSuppressLoadedEvent(current)) {
                     nativeAd.destroy();
                     notifyNativeDebug(current.placementId, current.slotId, "native_loaded_duplicate_ignored", "Duplicate native loaded event ignored for the active slot.");
@@ -470,6 +509,10 @@ public class NativeAdController {
                     activity.runOnUiThread(() -> {
                         NativeSlotState current = slotStore.get(slot.slotId);
                         if (current == null || !current.matchesActiveRequest(requestToken)) {
+                            return;
+                        }
+                        if (current.isDisposed()) {
+                            logNativeTransition("warn", current.placementId, current.slotId, current.hostId, "callback_skip_disposed", "Native failed callback ignored because the slot is already disposed.", null);
                             return;
                         }
                         if (shouldSuppressFailedAfterReady(current)) {
@@ -598,6 +641,77 @@ public class NativeAdController {
 
     private void notifyNativeDebug(String placementId, String slotId, String phase, String message) {
         notifyNativeEvent(placementId, slotId, phase, null, message);
+    }
+
+    private void logNativeTransition(String level, String placementId, String slotId, String hostId, String code, String message, JSObject data) {
+        events.log(level, "native", code, message, placementId, slotId, hostId, null, data);
+    }
+
+    private void logNativeGeometry(
+        String stage,
+        NativeCallOptions options,
+        FrameLayout hostContainer,
+        NativeAdView adView,
+        String hostFingerprint,
+        boolean layoutSkippedSameRect,
+        boolean attachSkippedSameHost
+    ) {
+        JSObject data = new JSObject();
+        data.put("stage", stage);
+        data.put("raw", buildNativeRectPayload(options));
+        data.put("hostComparison", buildNativeHostComparisonPayload(hostFingerprint, layoutSkippedSameRect, attachSkippedSameHost));
+        data.put("overlay", buildNativeOverlayPayload(hostContainer, adView));
+        logNativeTransition("debug", options.placementId, options.slotId, options.hostId, "native_geometry_" + stage, "[DonugrAdmob][native][geometry] stage=" + stage, data);
+    }
+
+    private JSObject buildNativeRectPayload(NativeCallOptions options) {
+        JSObject payload = new JSObject();
+        payload.put("x", options.hostX);
+        payload.put("y", options.hostY);
+        payload.put("width", options.hostWidth);
+        payload.put("height", options.hostHeight);
+        payload.put("anchor", options.hostAnchor);
+        payload.put("ttlMs", options.ttlMs);
+        payload.put("mediaMode", options.mediaMode);
+        return payload;
+    }
+
+    private JSObject buildNativeHostComparisonPayload(String hostFingerprint, boolean layoutSkippedSameRect, boolean attachSkippedSameHost) {
+        JSObject payload = new JSObject();
+        payload.put("fingerprint", hostFingerprint);
+        payload.put("layoutSkippedSameRect", layoutSkippedSameRect);
+        payload.put("attachSkippedSameHost", attachSkippedSameHost);
+        return payload;
+    }
+
+    private JSObject buildNativeOverlayPayload(FrameLayout hostContainer, NativeAdView adView) {
+        JSObject payload = new JSObject();
+        if (hostContainer == null) {
+            payload.put("available", false);
+            return payload;
+        }
+        payload.put("available", true);
+        payload.put("tag", String.valueOf(hostContainer.getTag()));
+        payload.put("left", hostContainer.getLeft());
+        payload.put("top", hostContainer.getTop());
+        payload.put("width", hostContainer.getWidth());
+        payload.put("height", hostContainer.getHeight());
+        FrameLayout.LayoutParams params = hostContainer.getLayoutParams() instanceof FrameLayout.LayoutParams
+            ? (FrameLayout.LayoutParams) hostContainer.getLayoutParams()
+            : null;
+        if (params != null) {
+            JSObject layout = new JSObject();
+            layout.put("width", params.width);
+            layout.put("height", params.height);
+            layout.put("gravity", params.gravity);
+            layout.put("leftMargin", params.leftMargin);
+            layout.put("topMargin", params.topMargin);
+            layout.put("rightMargin", params.rightMargin);
+            layout.put("bottomMargin", params.bottomMargin);
+            payload.put("params", layout);
+        }
+        payload.put("adViewAttached", adView != null);
+        return payload;
     }
 
     private String buildNativeLoadedMessage(NativeSlotState slot) {
@@ -827,6 +941,7 @@ public class NativeAdController {
                 removeHostContainerIfEmpty(parentView);
             }
         });
+        logNativeTransition("debug", slot.placementId, slot.slotId, slot.hostId, "cleanup_view", "Native attached view cleanup completed.", null);
         slot.clearViewReference();
     }
 
@@ -835,12 +950,16 @@ public class NativeAdController {
             return;
         }
 
+        slot.markDisposing();
+        logNativeTransition("debug", slot.placementId, slot.slotId, slot.hostId, "state_transition", "Native state: " + slot.status + ".", null);
         Activity activity = host.getPluginActivity();
         runOnUiThreadBlocking(activity, slot::clearAdReference);
         if (!NativeSlotState.STATUS_FAILED.equals(slot.status)) {
             slot.status = NativeSlotState.STATUS_IDLE;
         }
         slot.loading = false;
+        slot.markDestroyed();
+        logNativeTransition("debug", slot.placementId, slot.slotId, slot.hostId, "state_transition", "Native state: " + slot.status + ".", null);
     }
 
     private void cleanupSlot(NativeSlotState slot) {
@@ -855,6 +974,11 @@ public class NativeAdController {
                 continue;
             }
 
+            JSObject data = new JSObject();
+            data.put("ttlMs", slot.ttlMs);
+            data.put("loadedAtEpochMs", slot.loadedAtEpochMs);
+            data.put("expiredAtEpochMs", slot.loadedAtEpochMs + slot.ttlMs);
+            logNativeTransition("info", slot.placementId, slot.slotId, slot.hostId, "ttl_cleanup", "Native slot expired and will be cleaned up.", data);
             cleanupAndRemoveSlot(slot.slotId);
             notifyNativeEvent(slot.placementId, slot.slotId, "destroyed", "EXPIRED", "Native slot expired and was cleaned up.");
         }
@@ -870,6 +994,9 @@ public class NativeAdController {
 
     private void cleanupAndRemoveSlot(String slotId) {
         NativeSlotState slot = slotStore.remove(slotId);
+        if (slot != null) {
+            logNativeTransition("debug", slot.placementId, slot.slotId, slot.hostId, "cleanup_remove_slot", "Native slot removed from slot store.", null);
+        }
         cleanupSlot(slot);
     }
 

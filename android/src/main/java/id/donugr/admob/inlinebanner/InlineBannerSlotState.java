@@ -7,6 +7,8 @@ class InlineBannerSlotState {
     static final String STATUS_LOADING = "loading";
     static final String STATUS_READY = "ready";
     static final String STATUS_ATTACHED = "attached";
+    static final String STATUS_DISPOSING = "disposing";
+    static final String STATUS_DESTROYED = "destroyed";
     static final String STATUS_FAILED = "failed";
 
     final String slotId;
@@ -25,6 +27,7 @@ class InlineBannerSlotState {
     long lastLoadedAtEpochMs;
     long lastImpressionAtEpochMs;
     String lastEmittedPhase;
+    boolean disposed;
 
     InlineBannerSlotState(String slotId) {
         this.slotId = slotId;
@@ -43,6 +46,7 @@ class InlineBannerSlotState {
         this.lastLoadedAtEpochMs = 0L;
         this.lastImpressionAtEpochMs = 0L;
         this.lastEmittedPhase = "";
+        this.disposed = false;
     }
 
     void updateIdentity(String placementId, String hostId, String adUnitId) {
@@ -52,7 +56,7 @@ class InlineBannerSlotState {
     }
 
     boolean isReady() {
-        return adView != null && (STATUS_READY.equals(status) || STATUS_ATTACHED.equals(status)) && !loading;
+        return !disposed && adView != null && (STATUS_READY.equals(status) || STATUS_ATTACHED.equals(status)) && !loading;
     }
 
     boolean isLoading() {
@@ -64,6 +68,7 @@ class InlineBannerSlotState {
         clearAdReference();
         this.adView = adView;
         this.status = STATUS_LOADING;
+        this.disposed = false;
         this.loading = true;
         this.lastErrorCode = "";
         this.lastErrorMessage = "";
@@ -74,6 +79,9 @@ class InlineBannerSlotState {
     }
 
     void markReady() {
+        if (disposed) {
+            return;
+        }
         this.status = STATUS_READY;
         this.loading = false;
         this.lastErrorCode = "";
@@ -81,6 +89,9 @@ class InlineBannerSlotState {
     }
 
     void markAttached(String hostId, String hostFingerprint) {
+        if (disposed) {
+            return;
+        }
         this.hostId = hostId == null ? "" : hostId;
         this.attachedHostId = this.hostId;
         this.attachedHostFingerprint = hostFingerprint == null ? "" : hostFingerprint;
@@ -89,9 +100,25 @@ class InlineBannerSlotState {
     }
 
     void markDetached() {
+        if (disposed) {
+            return;
+        }
         clearViewReference();
         this.status = adView != null ? STATUS_READY : STATUS_IDLE;
         this.loading = false;
+    }
+
+    void markDisposing() {
+        this.status = STATUS_DISPOSING;
+        this.loading = false;
+        this.disposed = true;
+    }
+
+    void markDestroyed() {
+        clearViewReference();
+        this.status = STATUS_DESTROYED;
+        this.loading = false;
+        this.disposed = true;
     }
 
     void markFailed(String code, String message) {
@@ -99,6 +126,7 @@ class InlineBannerSlotState {
         clearAdReference();
         this.status = STATUS_FAILED;
         this.loading = false;
+        this.disposed = false;
         this.lastErrorCode = code == null ? "" : code;
         this.lastErrorMessage = message == null ? "" : message;
     }
@@ -136,7 +164,7 @@ class InlineBannerSlotState {
     }
 
     boolean matchesActiveRequest(long requestToken) {
-        return activeRequestToken == requestToken;
+        return !disposed && activeRequestToken == requestToken;
     }
 
     boolean isAttachedToHost(String hostId, String hostFingerprint) {
@@ -147,5 +175,9 @@ class InlineBannerSlotState {
         String safeHostId = hostId == null ? "" : hostId;
         String safeHostFingerprint = hostFingerprint == null ? "" : hostFingerprint;
         return safeHostId.equals(attachedHostId) && safeHostFingerprint.equals(attachedHostFingerprint);
+    }
+
+    boolean isDisposed() {
+        return disposed || STATUS_DISPOSING.equals(status) || STATUS_DESTROYED.equals(status);
     }
 }

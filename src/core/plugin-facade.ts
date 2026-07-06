@@ -1,6 +1,7 @@
 import type { PluginListenerHandle } from "@capacitor/core"
 import type {
   AdEvent,
+  AdLogEvent,
   BannerOptions,
   BridgeResult,
   ConfigureOptions,
@@ -16,7 +17,7 @@ import type {
 } from "../definitions"
 import { ConsentController } from "../consent/consent-controller"
 import { TrackingController } from "../consent/tracking-controller"
-import { AdEventEmitter } from "./events"
+import { AdEventEmitter, AdLogEmitter } from "./events"
 import { PlacementRegistry } from "./placement-registry"
 import { RequestConfigurationStore } from "./request-state"
 import { fail, ok } from "./result"
@@ -28,6 +29,7 @@ const placementRegistry = new PlacementRegistry()
 const consentController = new ConsentController()
 const trackingController = new TrackingController()
 const eventEmitter = new AdEventEmitter()
+const logEmitter = new AdLogEmitter()
 
 function unsupported<T = undefined>(message: string): BridgeResult<T> {
   return fail("NOT_IMPLEMENTED", message, "unsupported")
@@ -65,6 +67,8 @@ async function getRuntimeInfo(): Promise<BridgeResult<RuntimeInfo>> {
     enabled: runtime.enabled,
     testMode: runtime.testMode,
     releaseSystemUiOnAdInteraction: runtime.releaseSystemUiOnAdInteraction,
+    loggingLevel: runtime.loggingLevel,
+    emitAdEvents: runtime.emitAdEvents,
     applicationIdConfigured: Boolean(runtime.applicationId),
     applicationIdSource: runtime.applicationIdSource,
     placementsConfigured: placementRegistry.count(),
@@ -230,21 +234,38 @@ async function clearAll(): Promise<BridgeResult> {
   return ok()
 }
 
-async function addListener(eventName: "adEvent", listenerFunc: (event: AdEvent) => void): Promise<PluginListenerHandle> {
-  if (eventName !== "adEvent") {
+function addListener(eventName: "adEvent", listenerFunc: (event: AdEvent) => void): Promise<PluginListenerHandle>
+function addListener(eventName: "adLog", listenerFunc: (event: AdLogEvent) => void): Promise<PluginListenerHandle>
+async function addListener(
+  eventName: "adEvent" | "adLog",
+  listenerFunc: ((event: AdEvent) => void) | ((event: AdLogEvent) => void),
+): Promise<PluginListenerHandle> {
+  if (eventName === "adEvent") {
+    const typedListener = listenerFunc as (event: AdEvent) => void
+    eventEmitter.add(typedListener)
+    return {
+      remove: async () => {
+        eventEmitter.remove(typedListener)
+      },
+    }
+  }
+
+  if (eventName !== "adLog") {
     throw new Error(`Unsupported event name: ${eventName}`)
   }
 
-  eventEmitter.add(listenerFunc)
+  const typedListener = listenerFunc as (event: AdLogEvent) => void
+  logEmitter.add(typedListener)
   return {
     remove: async () => {
-      eventEmitter.remove(listenerFunc)
+      logEmitter.remove(typedListener)
     },
   }
 }
 
 async function removeAllListeners(): Promise<void> {
   eventEmitter.clear()
+  logEmitter.clear()
 }
 
 export const pluginFacade: DonugrAdmobPlugin = {

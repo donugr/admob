@@ -12,6 +12,10 @@ export type ApplicationIdSource = "js" | "android_manifest" | "ios_plist" | "mis
 
 export type MaxAdContentRating = "G" | "PG" | "T" | "MA" | ""
 
+export type LoggingLevel = "off" | "error" | "warn" | "info" | "debug"
+
+export type AdLogLevel = Exclude<LoggingLevel, "off">
+
 export type TestAdPreset =
   | "app_open"
   | "banner_fixed"
@@ -35,6 +39,8 @@ export type ConfigureOptions = {
   enabled: boolean
   testMode: boolean
   releaseSystemUiOnAdInteraction?: boolean
+  loggingLevel?: LoggingLevel
+  emitAdEvents?: boolean
   applicationId?: string
   placements?: Record<string, string>
 }
@@ -68,6 +74,8 @@ export type RuntimeInfo = {
   enabled: boolean
   testMode: boolean
   releaseSystemUiOnAdInteraction?: boolean
+  loggingLevel?: LoggingLevel
+  emitAdEvents?: boolean
   applicationIdConfigured: boolean
   applicationIdSource: ApplicationIdSource
   placementsConfigured: number
@@ -167,6 +175,21 @@ export type AdEvent = {
   message?: string
 }
 
+export type AdLogScope = AdFormat | "core" | "consent"
+
+export type AdLogEvent = {
+  level: AdLogLevel
+  scope: AdLogScope
+  code: string
+  message: string
+  placementId?: string
+  slotId?: string
+  hostId?: string
+  phase?: string
+  data?: Record<string, unknown>
+  timestamp: number
+}
+
 export type DonugrAdmobPlugin = {
   configure(options: ConfigureOptions): Promise<BridgeResult>
   configureRequest(options: RequestConfigurationOptions): Promise<BridgeResult>
@@ -208,5 +231,6 @@ export type DonugrAdmobPlugin = {
   refreshInlineBanner(options: InlineBannerOptions): Promise<BridgeResult>
   clearAll(): Promise<BridgeResult>
   addListener(eventName: "adEvent", listenerFunc: (event: AdEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "adLog", listenerFunc: (event: AdLogEvent) => void): Promise<PluginListenerHandle>
   removeAllListeners(): Promise<void>
 }

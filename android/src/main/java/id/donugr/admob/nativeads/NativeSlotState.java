@@ -8,6 +8,8 @@ class NativeSlotState {
     static final String STATUS_LOADING = "loading";
     static final String STATUS_READY = "ready";
     static final String STATUS_ATTACHED = "attached";
+    static final String STATUS_DISPOSING = "disposing";
+    static final String STATUS_DESTROYED = "destroyed";
     static final String STATUS_FAILED = "failed";
 
     final String slotId;
@@ -30,6 +32,7 @@ class NativeSlotState {
     long lastLoadedEventAtEpochMs;
     long lastImpressionEventAtEpochMs;
     String lastEmittedPhase;
+    boolean disposed;
 
     NativeSlotState(String slotId) {
         this.slotId = slotId;
@@ -52,6 +55,7 @@ class NativeSlotState {
         this.lastLoadedEventAtEpochMs = 0L;
         this.lastImpressionEventAtEpochMs = 0L;
         this.lastEmittedPhase = "";
+        this.disposed = false;
     }
 
     void updateIdentity(String placementId, String hostId, String adUnitId, String mediaMode, long ttlMs) {
@@ -63,7 +67,7 @@ class NativeSlotState {
     }
 
     boolean isReady(long nowMs) {
-        if (nativeAd == null) {
+        if (disposed || nativeAd == null) {
             return false;
         }
 
@@ -87,6 +91,7 @@ class NativeSlotState {
         clearAdReference();
         status = STATUS_LOADING;
         loading = true;
+        disposed = false;
         loadedAtEpochMs = 0L;
         lastErrorCode = "";
         lastErrorMessage = "";
@@ -97,6 +102,12 @@ class NativeSlotState {
     }
 
     void markReady(NativeAd nativeAd, long loadedAtEpochMs) {
+        if (disposed) {
+            if (nativeAd != null) {
+                nativeAd.destroy();
+            }
+            return;
+        }
         clearViewReference();
         clearAdReference();
         this.nativeAd = nativeAd;
@@ -108,6 +119,9 @@ class NativeSlotState {
     }
 
     void markAttached(String hostId, String hostRectFingerprint, NativeAdView attachedView) {
+        if (disposed) {
+            return;
+        }
         this.hostId = hostId;
         this.attachedHostId = hostId;
         this.attachedHostRectFingerprint = hostRectFingerprint == null ? "" : hostRectFingerprint;
@@ -117,9 +131,25 @@ class NativeSlotState {
     }
 
     void markDetached() {
+        if (disposed) {
+            return;
+        }
         clearViewReference();
         this.status = nativeAd != null ? STATUS_READY : STATUS_IDLE;
         this.loading = false;
+    }
+
+    void markDisposing() {
+        this.status = STATUS_DISPOSING;
+        this.loading = false;
+        this.disposed = true;
+    }
+
+    void markDestroyed() {
+        clearViewReference();
+        this.status = STATUS_DESTROYED;
+        this.loading = false;
+        this.disposed = true;
     }
 
     void markFailed(String code, String message) {
@@ -127,6 +157,7 @@ class NativeSlotState {
         clearAdReference();
         this.status = STATUS_FAILED;
         this.loading = false;
+        this.disposed = false;
         this.loadedAtEpochMs = 0L;
         this.lastErrorCode = code == null ? "" : code;
         this.lastErrorMessage = message == null ? "" : message;
@@ -167,7 +198,7 @@ class NativeSlotState {
     }
 
     boolean matchesActiveRequest(long requestToken) {
-        return activeRequestToken == requestToken;
+        return !disposed && activeRequestToken == requestToken;
     }
 
     boolean isAttachedToHost(String hostId, String hostRectFingerprint, long nowMs) {
@@ -178,5 +209,9 @@ class NativeSlotState {
         String safeHostId = hostId == null ? "" : hostId;
         String safeHostRectFingerprint = hostRectFingerprint == null ? "" : hostRectFingerprint;
         return safeHostId.equals(attachedHostId) && safeHostRectFingerprint.equals(attachedHostRectFingerprint);
+    }
+
+    boolean isDisposed() {
+        return disposed || STATUS_DISPOSING.equals(status) || STATUS_DESTROYED.equals(status);
     }
 }

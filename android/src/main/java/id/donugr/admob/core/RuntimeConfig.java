@@ -7,8 +7,10 @@ public class RuntimeConfig {
     private boolean enabled = false;
     private boolean testMode = false;
     private boolean releaseSystemUiOnAdInteraction = true;
+    private boolean emitAdEvents = false;
     private boolean requestConfigurationConfigured = false;
     private boolean mobileAdsInitialized = false;
+    private String loggingLevel = "off";
     private String applicationId = "";
     private String applicationIdSource = "missing";
     private final Map<String, String> placements = new ConcurrentHashMap<>();
@@ -35,6 +37,33 @@ public class RuntimeConfig {
 
     public void setReleaseSystemUiOnAdInteraction(boolean releaseSystemUiOnAdInteraction) {
         this.releaseSystemUiOnAdInteraction = releaseSystemUiOnAdInteraction;
+    }
+
+    public boolean isEmitAdEvents() {
+        return emitAdEvents;
+    }
+
+    public void setEmitAdEvents(boolean emitAdEvents) {
+        this.emitAdEvents = emitAdEvents;
+    }
+
+    public String getLoggingLevel() {
+        return loggingLevel;
+    }
+
+    public void setLoggingLevel(String loggingLevel) {
+        String normalized = loggingLevel == null ? "off" : loggingLevel.trim().toLowerCase();
+        switch (normalized) {
+            case "debug":
+            case "info":
+            case "warn":
+            case "error":
+                this.loggingLevel = normalized;
+                return;
+            case "off":
+            default:
+                this.loggingLevel = "off";
+        }
     }
 
     public boolean isRequestConfigurationConfigured() {
@@ -88,8 +117,10 @@ public class RuntimeConfig {
         enabled = false;
         testMode = false;
         releaseSystemUiOnAdInteraction = true;
+        emitAdEvents = false;
         requestConfigurationConfigured = false;
         mobileAdsInitialized = false;
+        loggingLevel = "off";
         applicationId = "";
         applicationIdSource = "missing";
         placements.clear();

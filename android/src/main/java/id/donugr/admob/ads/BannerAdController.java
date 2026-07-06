@@ -35,7 +35,7 @@ public class BannerAdController {
     private final AdEventDispatcher events;
     private final Map<String, AdView> bannerViews = new ConcurrentHashMap<>();
     private final Map<String, FrameLayout> bannerContainers = new ConcurrentHashMap<>();
-    private final Map<String, BannerEmissionState> emissionStates = new ConcurrentHashMap<>();
+    private final Map<String, BannerRuntimeState> runtimeStates = new ConcurrentHashMap<>();
 
     public BannerAdController(BannerHost host, RuntimeConfig runtimeConfig, AdEventDispatcher events) {
         this.host = host;
@@ -72,11 +72,16 @@ public class BannerAdController {
         }
 
         activity.runOnUiThread(() -> {
+            BannerRuntimeState state = getRuntimeState(placementId);
+            state.markLoading();
+            logBannerState("debug", placementId, "show_start", "Banner show started. state=" + state.status + ", position=" + position + ".");
             destroyBannerInternal(placementId, false);
-            resetEmissionState(placementId);
+            state.markLoading();
 
             FrameLayout container = ensureBannerContainer(activity, placementId, position);
             if (container == null) {
+                state.markFailed("NOT_READY", "Unable to create a banner host container.");
+                logBannerState("warn", placementId, "host_container_unavailable", "Banner show failed because host container could not be created.");
                 call.resolve(PluginResultHelper.failure("NOT_READY", "Unable to create a banner host container.", "not_ready"));
                 return;
             }
@@ -87,58 +92,88 @@ public class BannerAdController {
             adView.setAdListener(new AdListener() {
                 @Override
                 public void onAdLoaded() {
+                    BannerRuntimeState currentState = getRuntimeState(placementId);
+                    if (currentState.disposed) {
+                        logBannerState("warn", placementId, "callback_skip_disposed", "Banner loaded callback ignored because this placement is already disposed.");
+                        return;
+                    }
                     if (shouldSuppressLoadedEvent(placementId)) {
-                        events.emit("banner", placementId, "banner_loaded_duplicate_ignored", null, "Duplicate banner loaded event ignored for the active placement.");
+                        logBannerState("debug", placementId, "banner_loaded_duplicate_ignored", "Duplicate banner loaded event ignored for the active placement.");
                         return;
                     }
                     recordLoadedEmission(placementId);
+                    currentState.markLoaded();
+                    logBannerState("debug", placementId, "state_transition", "Banner state: " + currentState.status + ".");
                     events.emit("banner", placementId, "loaded", null, "Banner loaded.");
                 }
 
                 @Override
                 public void onAdFailedToLoad(LoadAdError loadAdError) {
-                    if (shouldSuppressFailedAfterReady(placementId)) {
-                        events.emit(
-                            "banner",
-                            placementId,
-                            "banner_failed_after_ready_ignored",
-                            null,
-                            "Banner failed callback ignored because this placement is already stable for the active load. code=" +
-                                loadAdError.getCode() +
-                                ", message=" + loadAdError.getMessage()
-                        );
+                    BannerRuntimeState currentState = getRuntimeState(placementId);
+                    if (currentState.disposed) {
+                        logBannerState("warn", placementId, "callback_skip_disposed", "Banner failed callback ignored because this placement is already disposed.");
                         return;
                     }
+                    if (shouldSuppressFailedAfterReady(placementId)) {
+                        logBannerState("debug", placementId, "banner_failed_after_ready_ignored", "Banner failed callback ignored because this placement is already stable for the active load. code=" + loadAdError.getCode() + ", message=" + loadAdError.getMessage());
+                        return;
+                    }
+                    currentState.markFailed(String.valueOf(loadAdError.getCode()), loadAdError.getMessage());
                     recordPhase(placementId, "failed");
+                    logBannerState("warn", placementId, "state_transition", "Banner state: " + currentState.status + ".");
                     events.emit("banner", placementId, "failed", String.valueOf(loadAdError.getCode()), loadAdError.getMessage());
                 }
 
                 @Override
                 public void onAdOpened() {
+                    BannerRuntimeState currentState = getRuntimeState(placementId);
+                    if (currentState.disposed) {
+                        return;
+                    }
+                    currentState.recordPhase("shown");
                     recordPhase(placementId, "shown");
+                    logBannerState("debug", placementId, "callback_order", "Banner callback: shown.");
                     events.emit("banner", placementId, "shown", null, "Banner opened.");
                 }
 
                 @Override
                 public void onAdClosed() {
+                    BannerRuntimeState currentState = getRuntimeState(placementId);
+                    if (currentState.disposed) {
+                        return;
+                    }
+                    currentState.recordPhase("dismissed");
                     recordPhase(placementId, "dismissed");
+                    logBannerState("debug", placementId, "callback_order", "Banner callback: dismissed.");
                     events.emit("banner", placementId, "dismissed", null, "Banner closed.");
                 }
 
                 @Override
                 public void onAdClicked() {
+                    BannerRuntimeState currentState = getRuntimeState(placementId);
+                    if (currentState.disposed) {
+                        return;
+                    }
                     releaseSystemUiIfNeeded(host.getPluginActivity());
+                    currentState.recordPhase("clicked");
                     recordPhase(placementId, "clicked");
+                    logBannerState("debug", placementId, "callback_order", "Banner callback: clicked.");
                     events.emit("banner", placementId, "clicked", null, "Banner clicked.");
                 }
 
                 @Override
                 public void onAdImpression() {
+                    BannerRuntimeState currentState = getRuntimeState(placementId);
+                    if (currentState.disposed) {
+                        return;
+                    }
                     if (shouldSuppressImpressionEvent(placementId)) {
-                        events.emit("banner", placementId, "banner_impression_duplicate_ignored", null, "Duplicate banner impression event ignored for the active placement.");
+                        logBannerState("debug", placementId, "banner_impression_duplicate_ignored", "Duplicate banner impression event ignored for the active placement.");
                         return;
                     }
                     recordImpressionEmission(placementId);
+                    currentState.recordImpressionEmission();
+                    logBannerState("debug", placementId, "callback_order", "Banner callback: impression.");
                     events.emit("banner", placementId, "impression", null, "Banner impression recorded.");
                 }
             });
@@ -158,10 +193,18 @@ public class BannerAdController {
             call.resolve(PluginResultHelper.failure("CONFIG_MISSING", "placementId is required.", "error"));
             return;
         }
-        FrameLayout container = bannerContainers.get(placementId);
-        if (container != null) {
-            container.setVisibility(View.GONE);
-        }
+        Activity activity = host.getPluginActivity();
+        runOnUiThreadBlocking(activity, () -> {
+            FrameLayout container = bannerContainers.get(placementId);
+            if (container != null) {
+                container.setVisibility(View.GONE);
+                BannerRuntimeState state = getRuntimeState(placementId);
+                state.markHidden();
+                logBannerState("debug", placementId, "hide_applied", "Banner hidden. state=" + state.status + ".");
+                return;
+            }
+            logBannerState("debug", placementId, "hide_noop", "Banner hide was a no-op because no container exists.");
+        });
         call.resolve(PluginResultHelper.success("ready"));
     }
 
@@ -171,6 +214,7 @@ public class BannerAdController {
             call.resolve(PluginResultHelper.failure("CONFIG_MISSING", "placementId is required.", "error"));
             return;
         }
+        logBannerState("debug", placementId, "destroy_start", "Banner destroy started.");
         destroyBannerInternal(placementId, true);
         call.resolve(PluginResultHelper.success("ready"));
     }
@@ -179,7 +223,7 @@ public class BannerAdController {
         for (String placementId : bannerViews.keySet()) {
             destroyBannerInternal(placementId, false);
         }
-        emissionStates.clear();
+        runtimeStates.clear();
     }
 
     private String resolveAdUnitId(PluginCall call, String placementId, String explicitAdUnitId, String testAdPreset) {
@@ -251,7 +295,11 @@ public class BannerAdController {
             }
             removeBannerContainer(placementId);
         });
-        emissionStates.remove(placementId);
+        BannerRuntimeState state = runtimeStates.get(placementId);
+        if (state != null) {
+            state.markDisposed();
+            logBannerState("debug", placementId, "state_transition", "Banner state: " + state.status + ".");
+        }
         if (emitDestroyed) {
             events.emit("banner", placementId, "destroyed", null, "Banner destroyed.");
         }
@@ -290,32 +338,28 @@ public class BannerAdController {
         }
     }
 
-    private BannerEmissionState getEmissionState(String placementId) {
-        return emissionStates.computeIfAbsent(placementId, ignored -> new BannerEmissionState());
-    }
-
-    private void resetEmissionState(String placementId) {
-        emissionStates.put(placementId, new BannerEmissionState());
+    private BannerRuntimeState getRuntimeState(String placementId) {
+        return runtimeStates.computeIfAbsent(placementId, ignored -> new BannerRuntimeState());
     }
 
     private void recordPhase(String placementId, String phase) {
-        getEmissionState(placementId).lastEmittedPhase = phase == null ? "" : phase;
+        getRuntimeState(placementId).lastEmittedPhase = phase == null ? "" : phase;
     }
 
     private void recordLoadedEmission(String placementId) {
-        BannerEmissionState state = getEmissionState(placementId);
+        BannerRuntimeState state = getRuntimeState(placementId);
         state.lastLoadedAtEpochMs = System.currentTimeMillis();
         state.lastEmittedPhase = "loaded";
     }
 
     private void recordImpressionEmission(String placementId) {
-        BannerEmissionState state = getEmissionState(placementId);
+        BannerRuntimeState state = getRuntimeState(placementId);
         state.lastImpressionAtEpochMs = System.currentTimeMillis();
         state.lastEmittedPhase = "impression";
     }
 
     private boolean shouldSuppressLoadedEvent(String placementId) {
-        BannerEmissionState state = getEmissionState(placementId);
+        BannerRuntimeState state = getRuntimeState(placementId);
         if (state.lastLoadedAtEpochMs <= 0L) {
             return false;
         }
@@ -323,7 +367,7 @@ public class BannerAdController {
     }
 
     private boolean shouldSuppressImpressionEvent(String placementId) {
-        BannerEmissionState state = getEmissionState(placementId);
+        BannerRuntimeState state = getRuntimeState(placementId);
         if (state.lastImpressionAtEpochMs <= 0L) {
             return false;
         }
@@ -331,8 +375,12 @@ public class BannerAdController {
     }
 
     private boolean shouldSuppressFailedAfterReady(String placementId) {
-        BannerEmissionState state = getEmissionState(placementId);
+        BannerRuntimeState state = getRuntimeState(placementId);
         return state.lastLoadedAtEpochMs > 0L;
+    }
+
+    private void logBannerState(String level, String placementId, String code, String message) {
+        events.log(level, "banner", code, message, placementId, null, null, null, null);
     }
 
     private void releaseSystemUiIfNeeded(Activity activity) {
@@ -347,9 +395,52 @@ public class BannerAdController {
         String requireTrimmed(PluginCall call, String key);
     }
 
-    private static final class BannerEmissionState {
+    private static final class BannerRuntimeState {
+        String status = "idle";
         long lastLoadedAtEpochMs;
         long lastImpressionAtEpochMs;
         String lastEmittedPhase = "";
+        String lastErrorCode = "";
+        String lastErrorMessage = "";
+        boolean disposed;
+
+        void markLoading() {
+            status = "loading";
+            disposed = false;
+            lastErrorCode = "";
+            lastErrorMessage = "";
+            lastLoadedAtEpochMs = 0L;
+            lastImpressionAtEpochMs = 0L;
+            lastEmittedPhase = "";
+        }
+
+        void markLoaded() {
+            status = "loaded";
+            disposed = false;
+        }
+
+        void markHidden() {
+            status = "hidden";
+        }
+
+        void markFailed(String code, String message) {
+            status = "failed";
+            lastErrorCode = code == null ? "" : code;
+            lastErrorMessage = message == null ? "" : message;
+        }
+
+        void markDisposed() {
+            status = "disposed";
+            disposed = true;
+        }
+
+        void recordPhase(String phase) {
+            lastEmittedPhase = phase == null ? "" : phase;
+        }
+
+        void recordImpressionEmission() {
+            lastImpressionAtEpochMs = System.currentTimeMillis();
+            lastEmittedPhase = "impression";
+        }
     }
 }

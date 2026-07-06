@@ -60,7 +60,7 @@ public class DonugrAdmobPlugin extends Plugin implements
     @Override
     public void load() {
         super.load();
-        events = new AdEventDispatcher(this);
+        events = new AdEventDispatcher(this, runtimeConfig);
         bannerController = new BannerAdController(this, runtimeConfig, events);
         interstitialController = new InterstitialAdController(this, runtimeConfig, events);
         rewardedController = new RewardedAdController(this, runtimeConfig, events);
@@ -101,9 +101,13 @@ public class DonugrAdmobPlugin extends Plugin implements
         boolean enabled = call.getBoolean("enabled", false);
         boolean testMode = call.getBoolean("testMode", false);
         boolean releaseSystemUiOnAdInteraction = call.getBoolean("releaseSystemUiOnAdInteraction", true);
+        boolean emitAdEvents = call.getBoolean("emitAdEvents", false);
+        String loggingLevel = requireTrimmed(call, "loggingLevel");
         runtimeConfig.setEnabled(enabled);
         runtimeConfig.setTestMode(testMode);
         runtimeConfig.setReleaseSystemUiOnAdInteraction(releaseSystemUiOnAdInteraction);
+        runtimeConfig.setEmitAdEvents(emitAdEvents);
+        runtimeConfig.setLoggingLevel(loggingLevel);
         runtimeConfig.setPlacements(extractPlacements(call.getObject("placements", new JSObject())));
 
         if (!enabled) {
@@ -146,6 +150,8 @@ public class DonugrAdmobPlugin extends Plugin implements
         data.put("enabled", runtimeConfig.isEnabled());
         data.put("testMode", runtimeConfig.isTestMode());
         data.put("releaseSystemUiOnAdInteraction", runtimeConfig.isReleaseSystemUiOnAdInteraction());
+        data.put("loggingLevel", runtimeConfig.getLoggingLevel());
+        data.put("emitAdEvents", runtimeConfig.isEmitAdEvents());
         data.put("applicationIdConfigured", !TextUtils.isEmpty(runtimeConfig.getApplicationId()));
         data.put("applicationIdSource", runtimeConfig.getApplicationIdSource());
         data.put("placementsConfigured", runtimeConfig.getPlacementsCount());

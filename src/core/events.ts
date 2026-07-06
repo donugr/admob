@@ -1,15 +1,16 @@
-import type { AdEvent } from "../definitions"
+import type { AdEvent, AdLogEvent } from "../definitions"
 
 export type AdEventListener = (event: AdEvent) => void
+export type AdLogListener = (event: AdLogEvent) => void
 
-export class AdEventEmitter {
-  private readonly listeners = new Set<AdEventListener>()
+export class EventEmitter<T> {
+  private readonly listeners = new Set<(event: T) => void>()
 
-  add(listener: AdEventListener) {
+  add(listener: (event: T) => void) {
     this.listeners.add(listener)
   }
 
-  remove(listener: AdEventListener) {
+  remove(listener: (event: T) => void) {
     this.listeners.delete(listener)
   }
 
@@ -17,9 +18,12 @@ export class AdEventEmitter {
     this.listeners.clear()
   }
 
-  emit(event: AdEvent) {
+  emit(event: T) {
     for (const listener of this.listeners) {
       listener(event)
     }
   }
 }
+
+export class AdEventEmitter extends EventEmitter<AdEvent> {}
+export class AdLogEmitter extends EventEmitter<AdLogEvent> {}

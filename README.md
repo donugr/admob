@@ -138,6 +138,7 @@ Quick format guidance for app consumers:
 | Method | Purpose |
 | --- | --- |
 | `addListener("adEvent", listener)` | Subscribe to cross-format lifecycle events |
+| `addListener("adLog", listener)` | Subscribe to structured diagnostics and runtime debug logs |
 | `removeAllListeners()` | Remove all registered listeners |
 
 ## Method Return Summary
@@ -234,6 +235,8 @@ await DonugrAdmob.configure({
   enabled: true,
   testMode: true,
   releaseSystemUiOnAdInteraction: true,
+  loggingLevel: "debug",
+  emitAdEvents: false,
   placements: {
     banner_home: "ca-app-pub-xxxx/banner",
     interstitial_break: "ca-app-pub-xxxx/interstitial",
@@ -270,6 +273,13 @@ Consumer recommendation:
 - use `adUnitId` only when you intentionally need an explicit per-call override
 - avoid mixing production `adUnitId` overrides with `testMode: true`
 
+Runtime diagnostics defaults:
+
+- `loggingLevel` defaults to `"off"`
+- `emitAdEvents` defaults to `false`
+- enable `loggingLevel: "debug"` during integration or layout troubleshooting
+- keep `emitAdEvents: false` unless the app explicitly needs lifecycle telemetry in JS
+
 System UI safety note:
 
 - `releaseSystemUiOnAdInteraction` defaults to `true`
@@ -278,6 +288,16 @@ System UI safety note:
 - this setting does not change the ad click destination; it only helps restore user escape affordances such as visible system bars
 
 Keep `testMode: true` and use Google test ads or test devices during development.
+
+## Backward Compatibility Notes
+
+This release keeps the public method names stable, but there are a few runtime-behavior notes for existing consumers:
+
+- `adLog` is new and is controlled by `loggingLevel`
+- `adEvent` should now be treated as opt-in runtime telemetry and is controlled by `emitAdEvents`
+- if an older consumer previously relied on receiving `adEvent` without explicit runtime config, set `emitAdEvents: true` in `configure(...)`
+- if an older consumer previously relied on `adb logcat` only for troubleshooting, `adLog` can now be consumed directly in JS without changing the main ad methods
+- host-based methods remain backward-compatible in signature, but Android runtime logs are now more explicit about stale, disposed, duplicate, and geometry-related branches
 
 ## Request Configuration
 
@@ -770,6 +790,7 @@ Coordinate note for WebView-based apps:
 - prefer using the exported `buildNativeHostRect(element)` helper so the same rounding rules are reused consistently
 - Android inline banner placement is still a native overlay, not true inline DOM rendering
 - the plugin normalizes `hostRect` relative to the Capacitor WebView before placing the native overlay
+- the Android plugin also applies a best-effort CSS-pixel to native-pixel normalization heuristic, because DOM viewport rects and native overlay coordinates do not always share the same scale
 - if the WebView layout changes because of scroll, resize, async content, keyboard, or orientation changes, the consumer should call `attachInlineBanner()` again with the latest rect
 - the plugin reuses the loaded ad view for relayout and skips tiny layout jitter where possible, but it does not automatically track DOM movement on every frame
 
@@ -786,6 +807,7 @@ Scale and viewport note:
 
 - `buildNativeHostRect(element)` uses `getBoundingClientRect()` and rounds to integer viewport pixels
 - this is the safest default for standard Capacitor WebView layouts and should be preferred over hand-built rect math
+- during attach, Android evaluates multiple normalization candidates, including WebView-relative and density-scaled interpretations, before choosing the applied overlay rect
 - if a consumer applies custom zoom, non-standard viewport scaling, or transforms that visually move the host without changing normal layout flow, overlay alignment can still drift because Android is rendering a native overlay, not DOM content
 - when diagnosing a mismatch, compare the DOM host rect, `window.innerWidth`, and the inline banner debug messages emitted by the plugin to determine whether the issue is offset-related or scale-related
 
@@ -888,6 +910,18 @@ Built-in protections:
 - isolated overlay namespace from native containers
 - identifier validation for `placementId`, `slotId`, and `hostId`
 
+Detach vs destroy guidance:
+
+- `detachInlineBanner(slotId)` removes the native view from its host but keeps the slot lifecycle when the loaded ad is still reusable
+- `destroyInlineBanner(slotId)` tears down the slot and should be used when the placement truly leaves the page or route
+- `detachNative(slotId)` and `destroyNative(slotId)` follow the same rule for native host placements
+
+Route-change cleanup guidance:
+
+- use `detach...()` for temporary host loss such as virtualization reuse, tab swaps, or short relayout windows
+- use `destroy...()` when the page, route, or logical placement is finished and should not be reused
+- on route leave, destroy host-based slots that will not immediately reattach on the next view
+
 ## Events
 
 Listen to the `adEvent` channel for shared lifecycle telemetry:
@@ -913,6 +947,31 @@ Common event phases:
 - `consent_updated`
 
 Additional preload and layout phases are emitted for native and inline banner diagnostics.
+
+### `adLog`
+
+Use `adLog` for structured diagnostics from the plugin:
+
+```ts
+const logHandle = await DonugrAdmob.addListener("adLog", log => {
+  console.log("[admob]", log.level, log.scope, log.code, log.message, log.data)
+})
+```
+
+Logging behavior:
+
+- `"off"`: plugin emits no `adLog`
+- `"error"`: only error diagnostics
+- `"warn"`: error and warning diagnostics
+- `"info"`: error, warning, and info diagnostics
+- `"debug"`: full diagnostics including geometry, callback-order, and state-transition traces
+
+Use `adEvent` and `adLog` differently:
+
+- `adEvent` is lifecycle-facing telemetry for app logic
+- `adLog` is diagnostics-facing telemetry for debugging and QA
+- `emitAdEvents` controls `adEvent`
+- `loggingLevel` controls `adLog`
 
 ### `adEvent` Payload
 
@@ -953,6 +1012,23 @@ Common phase usage:
 - `destroyed`: slot or banner destroyed
 - `consent_updated`: consent state changed
 - `preload_start`, `preload_reused`, `preload_skip_loading`, `attach_skipped_same_host`, `layout_skipped_same_rect`: diagnostics for native and inline host flows
+
+### `adLog` Payload
+
+Diagnostics payload shape:
+
+| Field | Type | Always present | Notes |
+| --- | --- | --- | --- |
+| `level` | `"error" \| "warn" \| "info" \| "debug"` | Yes | Log severity after `loggingLevel` filtering |
+| `scope` | `"core" \| "consent" \| "banner" \| "interstitial" \| "rewarded" \| "rewarded_interstitial" \| "app_open" \| "native" \| "inline_banner"` | Yes | Runtime area that emitted the log |
+| `code` | `string` | Yes | Stable log code for grouping and troubleshooting |
+| `message` | `string` | Yes | Human-readable diagnostic message |
+| `placementId` | `string` | No | Present when the log relates to a placement |
+| `slotId` | `string` | No | Present for host-based logs |
+| `hostId` | `string` | No | Present for host-based logs |
+| `phase` | `string` | No | Optional lifecycle phase context |
+| `data` | `object` | No | Structured diagnostics such as geometry, layout params, or callback context |
+| `timestamp` | `number` | Yes | Epoch milliseconds when the log was emitted |
 
 ## Return Payloads
 
@@ -1109,6 +1185,8 @@ Current Android runtime info includes:
 - `enabled`
 - `testMode`
 - `releaseSystemUiOnAdInteraction`
+- `loggingLevel`
+- `emitAdEvents`
 - `applicationIdConfigured`
 - `applicationIdSource`
 - `placementsConfigured`
@@ -1149,6 +1227,8 @@ Plugin consumers remain responsible for compliant ad placement, disclosure, and 
 Use development mode when wiring the plugin, validating layout, and checking event flow.
 
 - set `testMode: true`
+- prefer `loggingLevel: "debug"` while integrating
+- keep `emitAdEvents` disabled unless the app is actively consuming them
 - you may use `testAdPreset`
 - or use your own ad units plus `testDeviceIds`
 - do not click live ads without proper test-device setup
@@ -1160,6 +1240,7 @@ Use staging to verify real placement mapping before release.
 - prefer your own app ad unit IDs
 - keep `testDeviceIds` enabled where appropriate
 - reduce dependence on `testAdPreset`
+- prefer `loggingLevel: "info"` or `"warn"` unless geometry troubleshooting is still active
 - validate consent flow, fullscreen timing, and host-based layout behavior
 
 ### Production
@@ -1167,6 +1248,8 @@ Use staging to verify real placement mapping before release.
 Use production inventory owned by the consumer app.
 
 - set `testMode: false`
+- keep `loggingLevel: "off"` unless short-term field diagnostics are needed
+- keep `emitAdEvents: false` by default unless the app intentionally maps lifecycle telemetry
 - do not use `testAdPreset`
 - rely on `placements` as the default inventory mapping
 - use `adUnitId` only as an explicit override when truly needed

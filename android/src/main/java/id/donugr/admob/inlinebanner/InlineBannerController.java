@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -31,7 +30,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class InlineBannerController {
-    private static final String LOG_TAG = "DonugrAdmob";
     private static final String HOST_CONTAINER_TAG_PREFIX = "donugr-admob:inline-banner:";
     private static final String AD_SIZE_CURRENT_ORIENTATION = "current_orientation";
     private static final String AD_SIZE_LANDSCAPE = "landscape";
@@ -64,6 +62,11 @@ public class InlineBannerController {
         }
 
         InlineBannerSlotState slot = getOrCreateSlot(options.slotId, options.placementId, options.hostId, options.adUnitId);
+        if (slot.isDisposed()) {
+            logInlineTransition("warn", options.placementId, options.slotId, options.hostId, "preload_skip_disposed", "Inline banner preload skipped because this slot is already disposed.", null);
+            call.resolve(PluginResultHelper.success("not_ready"));
+            return;
+        }
         if (slot.isLoading()) {
             notifyInlineBannerDebug(options.placementId, options.slotId, "preload_skip_loading", "Inline banner preload skipped because this slot is already loading.");
             call.resolve(PluginResultHelper.success("loading"));
@@ -136,6 +139,12 @@ public class InlineBannerController {
         if (slot == null) {
             notifyInlineBannerDebug(options.placementId, options.slotId, "preload_skip_loading", "Inline banner attach failed because the slot does not exist. " + buildGeometrySummary(options, null));
             call.resolve(PluginResultHelper.failure("SLOT_NOT_FOUND", "Inline banner slot does not exist yet.", "not_ready"));
+            return;
+        }
+        logInlineTransition("info", options.placementId, options.slotId, options.hostId, "attach_start", "Inline banner attach started.", null);
+        if (slot.isDisposed()) {
+            logInlineTransition("warn", options.placementId, options.slotId, options.hostId, "attach_skip_disposed", "Inline banner attach skipped because this slot is already disposed.", null);
+            call.resolve(PluginResultHelper.failure("SLOT_DISPOSED", "Inline banner slot is already disposed.", "not_ready"));
             return;
         }
         if (!slot.isReady()) {
@@ -277,6 +286,12 @@ public class InlineBannerController {
             call.resolve(PluginResultHelper.success("not_ready"));
             return;
         }
+        logInlineTransition("info", slot.placementId, slot.slotId, slot.hostId, "detach_start", "Inline banner detach started.", null);
+        if (slot.isDisposed()) {
+            logInlineTransition("warn", slot.placementId, slot.slotId, slot.hostId, "detach_skip_disposed", "Inline banner detach skipped because this slot is already disposed.", null);
+            call.resolve(PluginResultHelper.success("not_ready"));
+            return;
+        }
 
         cleanupSlotView(slot);
         slot.markDetached();
@@ -293,6 +308,12 @@ public class InlineBannerController {
 
         InlineBannerSlotState slot = slotStore.get(slotId);
         if (slot != null) {
+            logInlineTransition("info", slot.placementId, slot.slotId, slot.hostId, "destroy_start", "Inline banner destroy started.", null);
+            if (slot.isDisposed()) {
+                logInlineTransition("warn", slot.placementId, slot.slotId, slot.hostId, "destroy_skip_already_disposed", "Inline banner destroy skipped because this slot is already disposed.", null);
+                call.resolve(PluginResultHelper.success("ready"));
+                return;
+            }
             notifyInlineBannerEvent(slot.placementId, slot.slotId, "destroyed", null, "Inline banner destroyed.");
         }
         cleanupAndRemoveSlot(slotId);
@@ -495,6 +516,10 @@ public class InlineBannerController {
                 if (current == null || !current.matchesActiveRequest(requestToken)) {
                     return;
                 }
+                if (current.isDisposed()) {
+                    logInlineTransition("warn", current.placementId, current.slotId, current.hostId, "callback_skip_disposed", "Inline banner loaded callback ignored because the slot is already disposed.", null);
+                    return;
+                }
                 if (shouldSuppressLoadedEvent(current)) {
                     notifyInlineBannerDebug(current.placementId, current.slotId, "inline_loaded_duplicate_ignored", "Duplicate inline banner loaded event ignored for the active slot.");
                     return;
@@ -508,6 +533,10 @@ public class InlineBannerController {
             public void onAdFailedToLoad(LoadAdError loadAdError) {
                 InlineBannerSlotState current = slotStore.get(slot.slotId);
                 if (current == null || !current.matchesActiveRequest(requestToken)) {
+                    return;
+                }
+                if (current.isDisposed()) {
+                    logInlineTransition("warn", current.placementId, current.slotId, current.hostId, "callback_skip_disposed", "Inline banner failed callback ignored because the slot is already disposed.", null);
                     return;
                 }
                 if (shouldSuppressFailedAfterReady(current)) {
@@ -531,7 +560,7 @@ public class InlineBannerController {
             @Override
             public void onAdOpened() {
                 InlineBannerSlotState current = slotStore.get(slot.slotId);
-                if (current != null) {
+                if (current != null && !current.isDisposed()) {
                     notifyInlineBannerEvent(current.placementId, current.slotId, "shown", null, "Inline banner opened.");
                 }
             }
@@ -539,7 +568,7 @@ public class InlineBannerController {
             @Override
             public void onAdClosed() {
                 InlineBannerSlotState current = slotStore.get(slot.slotId);
-                if (current != null) {
+                if (current != null && !current.isDisposed()) {
                     notifyInlineBannerEvent(current.placementId, current.slotId, "dismissed", null, "Inline banner closed.");
                 }
             }
@@ -547,7 +576,7 @@ public class InlineBannerController {
             @Override
             public void onAdClicked() {
                 InlineBannerSlotState current = slotStore.get(slot.slotId);
-                if (current != null) {
+                if (current != null && !current.isDisposed()) {
                     releaseSystemUiIfNeeded(host.getPluginActivity());
                     notifyInlineBannerClicked(current);
                 }
@@ -556,7 +585,7 @@ public class InlineBannerController {
             @Override
             public void onAdImpression() {
                 InlineBannerSlotState current = slotStore.get(slot.slotId);
-                if (current != null) {
+                if (current != null && !current.isDisposed()) {
                     if (shouldSuppressImpressionEvent(current)) {
                         notifyInlineBannerDebug(current.placementId, current.slotId, "inline_impression_duplicate_ignored", "Duplicate inline banner impression event ignored for the active slot.");
                         return;
@@ -832,12 +861,14 @@ public class InlineBannerController {
             return;
         }
 
+        slot.markDisposing();
         Activity activity = host.getPluginActivity();
         runOnUiThreadBlocking(activity, slot::clearAdReference);
         if (!InlineBannerSlotState.STATUS_FAILED.equals(slot.status)) {
             slot.status = InlineBannerSlotState.STATUS_IDLE;
         }
         slot.loading = false;
+        slot.markDestroyed();
     }
 
     private void cleanupSlot(InlineBannerSlotState slot) {
@@ -933,6 +964,10 @@ public class InlineBannerController {
         notifyInlineBannerEvent(placementId, slotId, phase, null, message);
     }
 
+    private void logInlineTransition(String level, String placementId, String slotId, String hostId, String code, String message, JSObject data) {
+        events.log(level, "inline_banner", code, message, placementId, slotId, hostId, null, data);
+    }
+
     private boolean shouldSuppressLoadedEvent(InlineBannerSlotState slot) {
         if (slot == null || slot.lastLoadedAtEpochMs <= 0L) {
             return false;
@@ -1004,6 +1039,8 @@ public class InlineBannerController {
                 .append(", y=").append(layoutContext.normalizedY)
                 .append(", width=").append(layoutContext.normalizedWidth)
                 .append(", height=").append(layoutContext.normalizedHeight)
+                .append(", mode=").append(layoutContext.normalizationMode)
+                .append(", scale=").append(layoutContext.normalizationScale)
                 .append("}\n");
             builder.append("  ").append(layoutContext.describeAppliedRect()).append('\n');
             builder.append("  ").append(layoutContext.describeFlags()).append('\n');
@@ -1013,7 +1050,95 @@ public class InlineBannerController {
             .append(", attachSkippedSameHost=").append(attachSkippedSameHost)
             .append("}\n");
         builder.append("  overlay").append(describeHostContainer(hostContainer));
-        Log.d(LOG_TAG, builder.toString());
+        JSObject data = new JSObject();
+        data.put("stage", stage);
+        data.put("raw", buildRawRectPayload(options));
+        data.put("adSizeStrategy", options.adSizeStrategy);
+        if (layoutContext != null) {
+            data.put("webView", buildRectSnapshotPayload(layoutContext.webViewRect));
+            data.put("contentRoot", buildRectSnapshotPayload(layoutContext.contentRootRect));
+            data.put("normalized", buildNormalizedPayload(layoutContext));
+            data.put("applied", buildAppliedPayload(layoutContext));
+            data.put("flags", buildFlagPayload(layoutContext, layoutSkippedSameRect, attachSkippedSameHost));
+        } else {
+            data.put("flags", buildDefaultFlagPayload(layoutSkippedSameRect, attachSkippedSameHost));
+        }
+        data.put("hostComparison", buildHostComparisonPayload(hostFingerprint, layoutSkippedSameRect, attachSkippedSameHost));
+        data.put("overlay", describeHostContainer(hostContainer));
+        logInlineTransition("debug", options.placementId, options.slotId, options.hostId, "inline_geometry_" + stage, builder.toString(), data);
+    }
+
+    private JSObject buildRawRectPayload(InlineBannerCallOptions options) {
+        JSObject payload = new JSObject();
+        payload.put("x", options.hostX);
+        payload.put("y", options.hostY);
+        payload.put("width", options.hostWidth);
+        payload.put("height", options.hostHeight);
+        payload.put("anchor", options.hostAnchor);
+        return payload;
+    }
+
+    private JSObject buildRectSnapshotPayload(HostOverlayHelper.RectSnapshot snapshot) {
+        JSObject payload = new JSObject();
+        if (snapshot == null) {
+            payload.put("available", false);
+            return payload;
+        }
+        payload.put("available", true);
+        payload.put("left", snapshot.left);
+        payload.put("top", snapshot.top);
+        payload.put("width", snapshot.width);
+        payload.put("height", snapshot.height);
+        return payload;
+    }
+
+    private JSObject buildNormalizedPayload(InlineBannerLayoutContext layoutContext) {
+        JSObject payload = new JSObject();
+        payload.put("x", layoutContext.normalizedX);
+        payload.put("y", layoutContext.normalizedY);
+        payload.put("width", layoutContext.normalizedWidth);
+        payload.put("height", layoutContext.normalizedHeight);
+        payload.put("mode", layoutContext.normalizationMode);
+        payload.put("scale", layoutContext.normalizationScale);
+        return payload;
+    }
+
+    private JSObject buildAppliedPayload(InlineBannerLayoutContext layoutContext) {
+        JSObject payload = new JSObject();
+        payload.put("left", layoutContext.appliedLeft);
+        payload.put("top", layoutContext.appliedTop);
+        payload.put("width", layoutContext.appliedWidth);
+        return payload;
+    }
+
+    private JSObject buildFlagPayload(InlineBannerLayoutContext layoutContext, boolean layoutSkippedSameRect, boolean attachSkippedSameHost) {
+        JSObject payload = new JSObject();
+        payload.put("partialRect", layoutContext.partialRect);
+        payload.put("explicitRectAvailable", layoutContext.explicitRectAvailable);
+        payload.put("measurable", layoutContext.measurable);
+        payload.put("fullyOutOfBounds", layoutContext.fullyOutOfBounds);
+        payload.put("layoutSkippedSameRect", layoutSkippedSameRect);
+        payload.put("attachSkippedSameHost", attachSkippedSameHost);
+        return payload;
+    }
+
+    private JSObject buildDefaultFlagPayload(boolean layoutSkippedSameRect, boolean attachSkippedSameHost) {
+        JSObject payload = new JSObject();
+        payload.put("partialRect", false);
+        payload.put("explicitRectAvailable", false);
+        payload.put("measurable", false);
+        payload.put("fullyOutOfBounds", false);
+        payload.put("layoutSkippedSameRect", layoutSkippedSameRect);
+        payload.put("attachSkippedSameHost", attachSkippedSameHost);
+        return payload;
+    }
+
+    private JSObject buildHostComparisonPayload(String hostFingerprint, boolean layoutSkippedSameRect, boolean attachSkippedSameHost) {
+        JSObject payload = new JSObject();
+        payload.put("fingerprint", hostFingerprint);
+        payload.put("layoutSkippedSameRect", layoutSkippedSameRect);
+        payload.put("attachSkippedSameHost", attachSkippedSameHost);
+        return payload;
     }
 
     private String describeHostContainer(FrameLayout hostContainer) {

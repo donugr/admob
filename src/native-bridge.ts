@@ -3,6 +3,7 @@ import type { PluginListenerHandle } from "@capacitor/core"
 import { pluginFacade } from "./core/plugin-facade"
 import type {
   AdEvent,
+  AdLogEvent,
   BannerOptions,
   BridgeResult,
   ConfigureOptions,
@@ -57,7 +58,17 @@ type NativeBridge = {
   refreshInlineBanner(options: InlineBannerOptions): Promise<BridgeResult>
   clearAll(): Promise<BridgeResult>
   addListener(eventName: "adEvent", listenerFunc: (event: AdEvent) => void): Promise<PluginListenerHandle>
+  addListener(eventName: "adLog", listenerFunc: (event: AdLogEvent) => void): Promise<PluginListenerHandle>
   removeAllListeners(): Promise<void>
+}
+
+function addWebListener(eventName: "adEvent", listenerFunc: (event: AdEvent) => void): Promise<PluginListenerHandle>
+function addWebListener(eventName: "adLog", listenerFunc: (event: AdLogEvent) => void): Promise<PluginListenerHandle>
+function addWebListener(
+  eventName: "adEvent" | "adLog",
+  listenerFunc: ((event: AdEvent) => void) | ((event: AdLogEvent) => void),
+): Promise<PluginListenerHandle> {
+  return pluginFacade.addListener(eventName as "adEvent", listenerFunc as (event: AdEvent) => void)
 }
 
 const webBridge: NativeBridge = {
@@ -100,7 +111,7 @@ const webBridge: NativeBridge = {
   destroyInlineBanner: ({ slotId }) => pluginFacade.destroyInlineBanner(slotId),
   refreshInlineBanner: (options) => pluginFacade.refreshInlineBanner(options),
   clearAll: () => pluginFacade.clearAll(),
-  addListener: (eventName, listenerFunc) => pluginFacade.addListener(eventName, listenerFunc),
+  addListener: addWebListener,
   removeAllListeners: () => pluginFacade.removeAllListeners(),
 }
 
