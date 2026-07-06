@@ -31,6 +31,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class InlineBannerController {
     private static final String HOST_CONTAINER_TAG_PREFIX = "donugr-admob:inline-banner:";
+    private static final String AD_SIZE_CURRENT_ORIENTATION = "current_orientation";
+    private static final String AD_SIZE_LANDSCAPE = "landscape";
+    private static final String AD_SIZE_PORTRAIT = "portrait";
     private static final int DEFAULT_INLINE_MARGIN_DP = 16;
     private static final int LAYOUT_JITTER_THRESHOLD_PX = 2;
     private static final long DUPLICATE_LOADED_WINDOW_MS = 1500L;
@@ -380,6 +383,10 @@ public class InlineBannerController {
         String hostId = host.requireTrimmed(call, "hostId");
         String explicitAdUnitId = host.requireTrimmed(call, "adUnitId");
         String testAdPreset = host.requireTrimmed(call, "testAdPreset");
+        String adSizeStrategy = parseAdSizeStrategy(call);
+        if (adSizeStrategy == null) {
+            return null;
+        }
         JSObject hostRect = call.getObject("hostRect");
         Integer hostX = parseOptionalInt(hostRect, "x");
         Integer hostY = parseOptionalInt(hostRect, "y");
@@ -426,7 +433,7 @@ public class InlineBannerController {
             return null;
         }
 
-        return new InlineBannerCallOptions(placementId, slotId, hostId, adUnitId, hostX, hostY, hostWidth, hostHeight, hostAnchor);
+        return new InlineBannerCallOptions(placementId, slotId, hostId, adUnitId, hostX, hostY, hostWidth, hostHeight, hostAnchor, adSizeStrategy);
     }
 
     private InlineBannerSlotState getOrCreateSlot(String slotId, String placementId, String hostId, String adUnitId) {
@@ -573,7 +580,15 @@ public class InlineBannerController {
         if (maxHeightDp > 0) {
             return AdSize.getInlineAdaptiveBannerAdSize(widthDp, maxHeightDp);
         }
-        return AdSize.getCurrentOrientationInlineAdaptiveBannerAdSize(activity, widthDp);
+        switch (options.adSizeStrategy) {
+            case AD_SIZE_LANDSCAPE:
+                return AdSize.getLandscapeInlineAdaptiveBannerAdSize(activity, widthDp);
+            case AD_SIZE_PORTRAIT:
+                return AdSize.getPortraitInlineAdaptiveBannerAdSize(activity, widthDp);
+            case AD_SIZE_CURRENT_ORIENTATION:
+            default:
+                return AdSize.getCurrentOrientationInlineAdaptiveBannerAdSize(activity, widthDp);
+        }
     }
 
     private int resolveBannerWidthPx(Activity activity, InlineBannerCallOptions options) {
@@ -627,6 +642,31 @@ public class InlineBannerController {
 
         String anchor = String.valueOf(hostRect.optString("anchor", "top")).trim().toLowerCase();
         return "bottom".equals(anchor) ? "bottom" : "top";
+    }
+
+    private String parseAdSizeStrategy(PluginCall call) {
+        String value = host.requireTrimmed(call, "adSizeStrategy");
+        if (TextUtils.isEmpty(value)) {
+            return AD_SIZE_CURRENT_ORIENTATION;
+        }
+
+        String normalized = value.trim().toLowerCase();
+        if (
+            AD_SIZE_CURRENT_ORIENTATION.equals(normalized) ||
+            AD_SIZE_LANDSCAPE.equals(normalized) ||
+            AD_SIZE_PORTRAIT.equals(normalized)
+        ) {
+            return normalized;
+        }
+
+        call.resolve(
+            PluginResultHelper.failure(
+                "CONFIG_INVALID",
+                "adSizeStrategy must be one of current_orientation, landscape, or portrait.",
+                "error"
+            )
+        );
+        return null;
     }
 
     private String buildHostRectFingerprint(InlineBannerCallOptions options, InlineBannerLayoutContext layoutContext) {
@@ -902,7 +942,8 @@ public class InlineBannerController {
     private String buildGeometrySummary(InlineBannerCallOptions options, InlineBannerLayoutContext layoutContext) {
         String base = "placementId=" + options.placementId +
             ", slotId=" + options.slotId +
-            ", hostId=" + options.hostId;
+            ", hostId=" + options.hostId +
+            ", adSizeStrategy=" + options.adSizeStrategy;
         if (layoutContext == null) {
             return base + ", rawHostRect={x=" + options.hostX + ", y=" + options.hostY + ", width=" + options.hostWidth + ", height=" + options.hostHeight + ", anchor=" + options.hostAnchor + "}";
         }
@@ -926,6 +967,7 @@ public class InlineBannerController {
         final Integer hostWidth;
         final Integer hostHeight;
         final String hostAnchor;
+        final String adSizeStrategy;
 
         InlineBannerCallOptions(
             String placementId,
@@ -936,7 +978,8 @@ public class InlineBannerController {
             Integer hostY,
             Integer hostWidth,
             Integer hostHeight,
-            String hostAnchor
+            String hostAnchor,
+            String adSizeStrategy
         ) {
             this.placementId = placementId;
             this.slotId = slotId;
@@ -947,6 +990,7 @@ public class InlineBannerController {
             this.hostWidth = hostWidth;
             this.hostHeight = hostHeight;
             this.hostAnchor = hostAnchor;
+            this.adSizeStrategy = adSizeStrategy;
         }
     }
 

@@ -128,6 +128,8 @@ export type NativeOptions = {
   mediaMode?: NativeMediaMode
 }
 
+export type InlineBannerAdSizeStrategy = "current_orientation" | "landscape" | "portrait"
+
 export type InlineBannerOptions = {
   placementId: string
   slotId: string
@@ -135,6 +137,7 @@ export type InlineBannerOptions = {
   adUnitId?: string
   testAdPreset?: Extract<TestAdPreset, "banner_inline_adaptive">
   hostRect?: NativeHostRect
+  adSizeStrategy?: InlineBannerAdSizeStrategy
 }
 
 export type AdEventPhase =

@@ -695,6 +695,13 @@ Supported options:
 | `hostRect.width` | `number` | No | Host width in px |
 | `hostRect.height` | `number` | No | Host height in px |
 | `hostRect.anchor` | `"top" \| "bottom"` | No | Anchor hint for host layout |
+| `adSizeStrategy` | `"current_orientation" \| "landscape" \| "portrait"` | No | Android inline adaptive sizing strategy used when `hostRect.height` is not set |
+
+Inline banner sizing note:
+
+- `adSizeStrategy` defaults to `"current_orientation"`
+- if `hostRect.height` is provided and greater than zero, Android keeps using the max-height inline adaptive request path and ignores `adSizeStrategy`
+- `"landscape"` and `"portrait"` influence the size request strategy only; they do not force the creative itself to become a specific orientation
 
 ```ts
 await DonugrAdmob.preloadNative({
@@ -802,11 +809,11 @@ await DonugrAdmob.preloadInlineBanner({
   placementId: "inline_feed_banner",
   slotId: "feed.banner.1",
   hostId: "feed.banner.host.1",
+  adSizeStrategy: "landscape",
   hostRect: {
     x: 16,
     y: 640,
     width: 360,
-    height: 120,
     anchor: "top",
   },
 })
@@ -818,16 +825,18 @@ if (ready.data?.ready) {
     placementId: "inline_feed_banner",
     slotId: "feed.banner.1",
     hostId: "feed.banner.host.1",
+    adSizeStrategy: "landscape",
     hostRect: {
       x: 16,
       y: 640,
       width: 360,
-      height: 120,
       anchor: "top",
     },
   })
 }
 ```
+
+If you want Android to honor a specific maximum inline banner height instead, pass `hostRect.height` and omit `adSizeStrategy`.
 
 Available inline banner methods:
 

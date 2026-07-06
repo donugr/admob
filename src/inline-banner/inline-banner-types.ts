@@ -1,4 +1,4 @@
-import type { NativeHostRect } from "../definitions"
+import type { InlineBannerAdSizeStrategy, NativeHostRect } from "../definitions"
 
 export type InlineBannerModuleStatus = "placeholder"
 
@@ -15,6 +15,7 @@ export type InlineBannerOptions = {
   hostId: string
   adUnitId?: string
   hostRect?: NativeHostRect
+  adSizeStrategy?: InlineBannerAdSizeStrategy
 }
 
 export type InlineBannerRuntimeSnapshot = {
