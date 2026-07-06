@@ -659,7 +659,14 @@ public class NativeAdController {
     }
 
     private void runOnUiThreadBlocking(Activity activity, Runnable action) {
-        if (activity == null || action == null) {
+        if (action == null) {
+            return;
+        }
+
+        if (activity == null) {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                action.run();
+            }
             return;
         }
 
@@ -828,7 +835,8 @@ public class NativeAdController {
             return;
         }
 
-        slot.clearAdReference();
+        Activity activity = host.getPluginActivity();
+        runOnUiThreadBlocking(activity, slot::clearAdReference);
         if (!NativeSlotState.STATUS_FAILED.equals(slot.status)) {
             slot.status = NativeSlotState.STATUS_IDLE;
         }

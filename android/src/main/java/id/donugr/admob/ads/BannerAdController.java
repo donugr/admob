@@ -1,6 +1,7 @@
 package id.donugr.admob.ads;
 
 import android.app.Activity;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
@@ -20,7 +21,9 @@ import id.donugr.admob.events.AdEventDispatcher;
 import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 public class BannerAdController {
     private static final String BANNER_HOST_PREFIX = "donugr-admob:banner:";
@@ -240,14 +243,50 @@ public class BannerAdController {
     }
 
     private void destroyBannerInternal(String placementId, boolean emitDestroyed) {
-        AdView adView = bannerViews.remove(placementId);
-        if (adView != null) {
-            adView.destroy();
-        }
-        removeBannerContainer(placementId);
+        Activity activity = host.getPluginActivity();
+        runOnUiThreadBlocking(activity, () -> {
+            AdView adView = bannerViews.remove(placementId);
+            if (adView != null) {
+                adView.destroy();
+            }
+            removeBannerContainer(placementId);
+        });
         emissionStates.remove(placementId);
         if (emitDestroyed) {
             events.emit("banner", placementId, "destroyed", null, "Banner destroyed.");
+        }
+    }
+
+    private void runOnUiThreadBlocking(Activity activity, Runnable action) {
+        if (action == null) {
+            return;
+        }
+
+        if (activity == null) {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                action.run();
+            }
+            return;
+        }
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            action.run();
+            return;
+        }
+
+        CountDownLatch latch = new CountDownLatch(1);
+        activity.runOnUiThread(() -> {
+            try {
+                action.run();
+            } finally {
+                latch.countDown();
+            }
+        });
+
+        try {
+            latch.await(3, TimeUnit.SECONDS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
         }
     }
 

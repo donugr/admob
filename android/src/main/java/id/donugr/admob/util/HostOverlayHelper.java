@@ -119,9 +119,28 @@ public final class HostOverlayHelper {
                 "} applied{left=" + appliedLeft + ", top=" + appliedTop + ", width=" + appliedWidth + "}";
         }
 
+        public String describeFlags() {
+            return "flags{partialRect=" + partialRect +
+                ", explicitRectAvailable=" + explicitRectAvailable +
+                ", measurable=" + measurable +
+                ", fullyOutOfBounds=" + fullyOutOfBounds +
+                "}";
+        }
+
+        public String describeWebViewRect() {
+            return "webView" + (webViewRect == null ? "{unavailable}" : webViewRect.describe());
+        }
+
+        public String describeContentRootRect() {
+            return "contentRoot" + (contentRootRect == null ? "{unavailable}" : contentRootRect.describe());
+        }
+
+        public String describeAppliedRect() {
+            return "applied{left=" + appliedLeft + ", top=" + appliedTop + ", width=" + appliedWidth + "}";
+        }
+
         public String describeEnvironment() {
-            return "webView" + (webViewRect == null ? "{unavailable}" : webViewRect.describe()) +
-                " contentRoot" + (contentRootRect == null ? "{unavailable}" : contentRootRect.describe());
+            return describeWebViewRect() + " " + describeContentRootRect();
         }
 
         private static boolean hasAny(Integer... values) {
