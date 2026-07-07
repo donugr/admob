@@ -35,6 +35,9 @@ public class InlineBannerController {
     private static final String AD_SIZE_LANDSCAPE = "landscape";
     private static final String AD_SIZE_PORTRAIT = "portrait";
     private static final int DEFAULT_INLINE_MARGIN_DP = 16;
+    private static final int DEFAULT_MAX_HEIGHT_DP = 0;
+    private static final int MIN_MAX_HEIGHT_DP = 32;
+    private static final int MAX_MAX_HEIGHT_DP = 1200;
     private static final int LAYOUT_JITTER_THRESHOLD_PX = 2;
     private static final long DUPLICATE_LOADED_WINDOW_MS = 1500L;
     private static final long DUPLICATE_IMPRESSION_WINDOW_MS = 2500L;
@@ -105,7 +108,7 @@ public class InlineBannerController {
 
             long requestToken = slot.markLoading(adView);
             notifyInlineBannerDebug(options.placementId, options.slotId, "preload_start", "Inline banner preload started. " + buildGeometrySummary(options, null));
-            startLoad(slot, requestToken);
+            startLoad(slot, requestToken, options);
             resultRef.set(PluginResultHelper.success("loading"));
         });
 
@@ -419,6 +422,33 @@ public class InlineBannerController {
         if (adSizeStrategy == null) {
             return null;
         }
+        Integer requestedMaxHeightDp = call.getInt("maxHeightDp");
+        int maxHeightDp =
+            requestedMaxHeightDp == null
+                ? DEFAULT_MAX_HEIGHT_DP
+                : requestedMaxHeightDp;
+
+        if (
+            maxHeightDp != DEFAULT_MAX_HEIGHT_DP &&
+            (
+                maxHeightDp < MIN_MAX_HEIGHT_DP ||
+                maxHeightDp > MAX_MAX_HEIGHT_DP
+            )
+        ) {
+            call.resolve(
+                PluginResultHelper.failure(
+                    "INLINE_MAX_HEIGHT_INVALID",
+                    "maxHeightDp must be between "
+                        + MIN_MAX_HEIGHT_DP
+                        + " and "
+                        + MAX_MAX_HEIGHT_DP
+                        + " dp.",
+                    "error"
+                )
+            );
+
+            return null;
+        }
         JSObject hostRect = call.getObject("hostRect");
         Integer hostX = parseOptionalInt(hostRect, "x");
         Integer hostY = parseOptionalInt(hostRect, "y");
@@ -465,7 +495,7 @@ public class InlineBannerController {
             return null;
         }
 
-        return new InlineBannerCallOptions(placementId, slotId, hostId, adUnitId, hostX, hostY, hostWidth, hostHeight, hostAnchor, adSizeStrategy);
+        return new InlineBannerCallOptions(placementId, slotId, hostId, adUnitId, hostX, hostY, hostWidth, hostHeight, hostAnchor, adSizeStrategy, maxHeightDp);
     }
 
     private InlineBannerSlotState getOrCreateSlot(String slotId, String placementId, String hostId, String adUnitId) {
@@ -503,7 +533,11 @@ public class InlineBannerController {
         );
     }
 
-    private void startLoad(InlineBannerSlotState slot, long requestToken) {
+    private void startLoad(
+        InlineBannerSlotState slot,
+        long requestToken,
+        InlineBannerCallOptions options
+    ) {
         if (slot == null || slot.adView == null) {
             return;
         }
@@ -526,7 +560,17 @@ public class InlineBannerController {
                 }
 
                 current.markReady();
-                notifyInlineBannerLoaded(current, "Inline banner loaded.");
+
+                JSObject creativeSizeData = buildCreativeSizeData(
+                    adView,
+                    options
+                );
+
+                notifyInlineBannerLoaded(
+                    current,
+                    "Inline banner loaded.",
+                    creativeSizeData
+                );
             }
 
             @Override
@@ -616,10 +660,13 @@ public class InlineBannerController {
     }
 
     private AdSize resolveAdSize(Activity activity, InlineBannerCallOptions options, int widthDp) {
-        int maxHeightDp = pxToDp(options.hostHeight == null ? 0 : options.hostHeight);
-        if (maxHeightDp > 0) {
-            return AdSize.getInlineAdaptiveBannerAdSize(widthDp, maxHeightDp);
+        if (options.maxHeightDp > 0) {
+            return AdSize.getInlineAdaptiveBannerAdSize(
+                widthDp,
+                options.maxHeightDp
+            );
         }
+
         switch (options.adSizeStrategy) {
             case AD_SIZE_LANDSCAPE:
                 return AdSize.getLandscapeInlineAdaptiveBannerAdSize(activity, widthDp);
@@ -629,6 +676,61 @@ public class InlineBannerController {
             default:
                 return AdSize.getCurrentOrientationInlineAdaptiveBannerAdSize(activity, widthDp);
         }
+    }
+
+    private JSObject buildCreativeSizeData(
+        AdView adView,
+        InlineBannerCallOptions options
+    ) {
+        JSObject data = new JSObject();
+        JSObject creativeSize = new JSObject();
+
+        if (adView == null) {
+            data.put("creativeSize", creativeSize);
+            return data;
+        }
+
+        AdSize adSize = adView.getAdSize();
+        if (adSize == null) {
+            data.put("creativeSize", creativeSize);
+            return data;
+        }
+
+        Activity activity = host.getPluginActivity();
+
+        int widthDp = adSize.getWidth();
+        int heightDp = adSize.getHeight();
+        int widthPx = 0;
+        int heightPx = 0;
+
+        if (activity != null) {
+            widthPx = adSize.getWidthInPixels(activity);
+            heightPx = adSize.getHeightInPixels(activity);
+        }
+
+        creativeSize.put("widthDp", widthDp);
+        creativeSize.put("heightDp", heightDp);
+        creativeSize.put("widthPx", widthPx);
+        creativeSize.put("heightPx", heightPx);
+
+        if (options != null) {
+            if (options.hostWidth != null) {
+                creativeSize.put("requestedHostWidthPx", options.hostWidth);
+            }
+
+            if (options.hostHeight != null) {
+                creativeSize.put("requestedHostHeightPx", options.hostHeight);
+            }
+
+            if (options.maxHeightDp > 0) {
+                creativeSize.put("requestedMaxHeightDp", options.maxHeightDp);
+            }
+
+            creativeSize.put("adSizeStrategy", options.adSizeStrategy);
+        }
+
+        data.put("creativeSize", creativeSize);
+        return data;
     }
 
     private int resolveBannerWidthPx(Activity activity, InlineBannerCallOptions options) {
@@ -918,11 +1020,36 @@ public class InlineBannerController {
         events.emit("inline_banner", placementId, phase, code, message, slotId);
     }
 
-    private void notifyInlineBannerLoaded(InlineBannerSlotState slot, String message) {
-        if (slot != null) {
-            slot.recordLoadedEmission(System.currentTimeMillis());
+    private void notifyInlineBannerLoaded(
+        InlineBannerSlotState slot,
+        String message,
+        JSObject data
+    ) {
+        if (slot == null) {
+            return;
         }
-        notifyInlineBannerEvent(slot.placementId, slot.slotId, "loaded", null, message);
+
+        slot.recordLoadedEmission(System.currentTimeMillis());
+
+        events.emit(
+            "inline_banner",
+            slot.placementId,
+            "loaded",
+            null,
+            message,
+            slot.slotId,
+            data
+        );
+
+        logInlineTransition(
+            "info",
+            slot.placementId,
+            slot.slotId,
+            slot.hostId,
+            "creative_size_resolved",
+            "Inline banner creative size resolved.",
+            data
+        );
     }
 
     private void notifyInlineBannerFailed(InlineBannerSlotState slot, String code, String message) {
@@ -997,7 +1124,8 @@ public class InlineBannerController {
         String base = "placementId=" + options.placementId +
             ", slotId=" + options.slotId +
             ", hostId=" + options.hostId +
-            ", adSizeStrategy=" + options.adSizeStrategy;
+            ", adSizeStrategy=" + options.adSizeStrategy +
+            ", maxHeightDp=" + options.maxHeightDp;
         if (layoutContext == null) {
             return base + ", rawHostRect={x=" + options.hostX + ", y=" + options.hostY + ", width=" + options.hostWidth + ", height=" + options.hostHeight + ", anchor=" + options.hostAnchor + "}";
         }
@@ -1025,7 +1153,11 @@ public class InlineBannerController {
             .append(", height=").append(options.hostHeight)
             .append(", anchor=").append(options.hostAnchor)
             .append("}\n");
-        builder.append("  adSize{strategy=").append(options.adSizeStrategy).append("}\n");
+        builder.append("  adSize{strategy=")
+            .append(options.adSizeStrategy)
+            .append(", maxHeightDp=")
+            .append(options.maxHeightDp)
+            .append("}\n");
         if (layoutContext == null) {
             builder.append("  webView{unavailable}\n");
             builder.append("  contentRoot{unavailable}\n");
@@ -1054,6 +1186,7 @@ public class InlineBannerController {
         data.put("stage", stage);
         data.put("raw", buildRawRectPayload(options));
         data.put("adSizeStrategy", options.adSizeStrategy);
+        data.put("maxHeightDp", options.maxHeightDp);
         if (layoutContext != null) {
             data.put("webView", buildRectSnapshotPayload(layoutContext.webViewRect));
             data.put("contentRoot", buildRectSnapshotPayload(layoutContext.contentRootRect));
@@ -1190,7 +1323,7 @@ public class InlineBannerController {
         final Integer hostHeight;
         final String hostAnchor;
         final String adSizeStrategy;
-
+        final int maxHeightDp;
         InlineBannerCallOptions(
             String placementId,
             String slotId,
@@ -1201,7 +1334,8 @@ public class InlineBannerController {
             Integer hostWidth,
             Integer hostHeight,
             String hostAnchor,
-            String adSizeStrategy
+            String adSizeStrategy,
+            int maxHeightDp
         ) {
             this.placementId = placementId;
             this.slotId = slotId;
@@ -1213,6 +1347,7 @@ public class InlineBannerController {
             this.hostHeight = hostHeight;
             this.hostAnchor = hostAnchor;
             this.adSizeStrategy = adSizeStrategy;
+            this.maxHeightDp = maxHeightDp;
         }
     }
 
