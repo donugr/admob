@@ -13,6 +13,7 @@ import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.events.AdEventDataBuilder;
 import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
@@ -23,15 +24,17 @@ public class RewardedAdController {
     private final RewardedHost host;
     private final RuntimeConfig runtimeConfig;
     private final AdEventDispatcher events;
+    private final FullscreenAdCoordinator fullscreenCoordinator;
     private final Map<String, RewardedAd> rewardedAds = new ConcurrentHashMap<>();
     private final Map<String, FullscreenPlacementState> placementStates = new ConcurrentHashMap<>();
     private final Set<String> loadingPlacements = ConcurrentHashMap.newKeySet();
     private final Set<String> disposedPlacements = ConcurrentHashMap.newKeySet();
 
-    public RewardedAdController(RewardedHost host, RuntimeConfig runtimeConfig, AdEventDispatcher events) {
+    public RewardedAdController(RewardedHost host, RuntimeConfig runtimeConfig, AdEventDispatcher events, FullscreenAdCoordinator fullscreenCoordinator) {
         this.host = host;
         this.runtimeConfig = runtimeConfig;
         this.events = events;
+        this.fullscreenCoordinator = fullscreenCoordinator;
     }
 
     public void preload(PluginCall call) {
@@ -142,6 +145,10 @@ public class RewardedAdController {
             return;
         }
 
+        if (!fullscreenCoordinator.tryAcquire("rewarded", placementId)) {
+            call.resolve(PluginResultHelper.failure("FULLSCREEN_ALREADY_SHOWING", "Another fullscreen ad is already showing.", "not_ready"));
+            return;
+        }
         state.markShowing();
         logState("debug", placementId, "state_transition", "Rewarded state: " + state.status + ".");
         events.log("info", "rewarded", "show_start", "Rewarded show started.", placementId, null, null, null, null);
@@ -156,7 +163,7 @@ public class RewardedAdController {
             if (rewardItem != null) {
                 message = "Reward earned: " + rewardItem.getAmount() + " " + rewardItem.getType();
             }
-            events.emit("rewarded", placementId, "reward_earned", null, message);
+            events.emit("rewarded", placementId, "reward_earned", null, message, null, AdEventDataBuilder.reward(rewardItem == null ? 0 : rewardItem.getAmount(), rewardItem == null ? "" : rewardItem.getType()));
         });
         call.resolve(PluginResultHelper.success("ready"));
     }
@@ -183,7 +190,7 @@ public class RewardedAdController {
                 state.recordPhase("shown");
                 logState("debug", placementId, "callback_order", "Rewarded callback: shown.");
                 releaseSystemUiIfNeeded(host.getPluginActivity());
-                events.emit("rewarded", placementId, "shown", null, "Rewarded ad shown.");
+                events.emit("rewarded", placementId, "shown", null, "Rewarded ad shown.", null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), true));
             }
 
             @Override
@@ -198,7 +205,8 @@ public class RewardedAdController {
                 state.recordPhase("dismissed");
                 logState("debug", placementId, "callback_order", "Rewarded callback: dismissed.");
                 logState("debug", placementId, "state_transition", "Rewarded state: " + state.status + ".");
-                events.emit("rewarded", placementId, "dismissed", null, "Rewarded ad dismissed.");
+                fullscreenCoordinator.release("rewarded", placementId);
+                events.emit("rewarded", placementId, "dismissed", null, "Rewarded ad dismissed.", null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), false));
             }
 
             @Override
@@ -213,7 +221,8 @@ public class RewardedAdController {
                 state.recordPhase("failed");
                 logState("warn", placementId, "callback_order", "Rewarded callback: failed_to_show.");
                 logState("warn", placementId, "state_transition", "Rewarded state: " + state.status + ".");
-                events.emit("rewarded", placementId, "failed", String.valueOf(adError.getCode()), adError.getMessage());
+                fullscreenCoordinator.release("rewarded", placementId);
+                events.emit("rewarded", placementId, "failed", String.valueOf(adError.getCode()), adError.getMessage(), null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), false));
             }
 
             @Override

@@ -730,6 +730,15 @@ public class InlineBannerController {
         }
 
         data.put("creativeSize", creativeSize);
+        if (options != null) {
+            JSObject hostSize = new JSObject();
+            if (options.hostX != null) hostSize.put("xPx", options.hostX);
+            if (options.hostY != null) hostSize.put("yPx", options.hostY);
+            hostSize.put("widthPx", options.hostWidth == null ? 0 : options.hostWidth);
+            hostSize.put("heightPx", options.hostHeight == null ? 0 : options.hostHeight);
+            hostSize.put("anchor", options.hostAnchor);
+            data.put("hostSize", hostSize);
+        }
         return data;
     }
 

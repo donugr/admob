@@ -17,6 +17,7 @@ import com.google.android.gms.ads.MobileAds;
 import com.google.android.gms.ads.RequestConfiguration;
 import id.donugr.admob.ads.AppOpenAdController;
 import id.donugr.admob.ads.BannerAdController;
+import id.donugr.admob.ads.FullscreenAdCoordinator;
 import id.donugr.admob.ads.InterstitialAdController;
 import id.donugr.admob.ads.RewardedAdController;
 import id.donugr.admob.ads.RewardedInterstitialAdController;
@@ -53,6 +54,7 @@ public class DonugrAdmobPlugin extends Plugin implements
     private RewardedAdController rewardedController;
     private RewardedInterstitialAdController rewardedInterstitialController;
     private AppOpenAdController appOpenController;
+    private FullscreenAdCoordinator fullscreenCoordinator;
     private NativeAdController nativeAdController;
     private InlineBannerController inlineBannerController;
     private AndroidConsentController consentController;
@@ -61,11 +63,12 @@ public class DonugrAdmobPlugin extends Plugin implements
     public void load() {
         super.load();
         events = new AdEventDispatcher(this, runtimeConfig);
+        fullscreenCoordinator = new FullscreenAdCoordinator();
         bannerController = new BannerAdController(this, runtimeConfig, events);
-        interstitialController = new InterstitialAdController(this, runtimeConfig, events);
-        rewardedController = new RewardedAdController(this, runtimeConfig, events);
-        rewardedInterstitialController = new RewardedInterstitialAdController(this, runtimeConfig, events);
-        appOpenController = new AppOpenAdController(this, runtimeConfig, events);
+        interstitialController = new InterstitialAdController(this, runtimeConfig, events, fullscreenCoordinator);
+        rewardedController = new RewardedAdController(this, runtimeConfig, events, fullscreenCoordinator);
+        rewardedInterstitialController = new RewardedInterstitialAdController(this, runtimeConfig, events, fullscreenCoordinator);
+        appOpenController = new AppOpenAdController(this, runtimeConfig, events, fullscreenCoordinator);
         nativeAdController = new NativeAdController(this, runtimeConfig, events);
         inlineBannerController = new InlineBannerController(this, runtimeConfig, events);
         consentController = new AndroidConsentController(this, events);
@@ -471,6 +474,7 @@ public class DonugrAdmobPlugin extends Plugin implements
     }
 
     private void clearAllInternal() {
+        if (fullscreenCoordinator != null) fullscreenCoordinator.clear();
         bannerController.clearAll();
         interstitialController.clearAll();
         rewardedController.clearAll();

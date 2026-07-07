@@ -12,6 +12,7 @@ import com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAdLoa
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.events.AdEventDataBuilder;
 import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
@@ -22,15 +23,17 @@ public class RewardedInterstitialAdController {
     private final RewardedInterstitialHost host;
     private final RuntimeConfig runtimeConfig;
     private final AdEventDispatcher events;
+    private final FullscreenAdCoordinator fullscreenCoordinator;
     private final Map<String, RewardedInterstitialAd> rewardedInterstitialAds = new ConcurrentHashMap<>();
     private final Map<String, FullscreenPlacementState> placementStates = new ConcurrentHashMap<>();
     private final Set<String> loadingPlacements = ConcurrentHashMap.newKeySet();
     private final Set<String> disposedPlacements = ConcurrentHashMap.newKeySet();
 
-    public RewardedInterstitialAdController(RewardedInterstitialHost host, RuntimeConfig runtimeConfig, AdEventDispatcher events) {
+    public RewardedInterstitialAdController(RewardedInterstitialHost host, RuntimeConfig runtimeConfig, AdEventDispatcher events, FullscreenAdCoordinator fullscreenCoordinator) {
         this.host = host;
         this.runtimeConfig = runtimeConfig;
         this.events = events;
+        this.fullscreenCoordinator = fullscreenCoordinator;
     }
 
     public void preload(PluginCall call) {
@@ -141,6 +144,10 @@ public class RewardedInterstitialAdController {
             return;
         }
 
+        if (!fullscreenCoordinator.tryAcquire("rewarded_interstitial", placementId)) {
+            call.resolve(PluginResultHelper.failure("FULLSCREEN_ALREADY_SHOWING", "Another fullscreen ad is already showing.", "not_ready"));
+            return;
+        }
         state.markShowing();
         logState("debug", placementId, "state_transition", "Rewarded interstitial state: " + state.status + ".");
         events.log("info", "rewarded_interstitial", "show_start", "Rewarded interstitial show started.", placementId, null, null, null, null);
@@ -155,7 +162,7 @@ public class RewardedInterstitialAdController {
             if (rewardItem != null) {
                 message = "Reward earned: " + rewardItem.getAmount() + " " + rewardItem.getType();
             }
-            events.emit("rewarded_interstitial", placementId, "reward_earned", null, message);
+            events.emit("rewarded_interstitial", placementId, "reward_earned", null, message, null, AdEventDataBuilder.reward(rewardItem == null ? 0 : rewardItem.getAmount(), rewardItem == null ? "" : rewardItem.getType()));
         });
         call.resolve(PluginResultHelper.success("ready"));
     }
@@ -182,7 +189,7 @@ public class RewardedInterstitialAdController {
                 state.recordPhase("shown");
                 logState("debug", placementId, "callback_order", "Rewarded interstitial callback: shown.");
                 releaseSystemUiIfNeeded(host.getPluginActivity());
-                events.emit("rewarded_interstitial", placementId, "shown", null, "Rewarded interstitial ad shown.");
+                events.emit("rewarded_interstitial", placementId, "shown", null, "Rewarded interstitial ad shown.", null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), true));
             }
 
             @Override
@@ -197,7 +204,8 @@ public class RewardedInterstitialAdController {
                 state.recordPhase("dismissed");
                 logState("debug", placementId, "callback_order", "Rewarded interstitial callback: dismissed.");
                 logState("debug", placementId, "state_transition", "Rewarded interstitial state: " + state.status + ".");
-                events.emit("rewarded_interstitial", placementId, "dismissed", null, "Rewarded interstitial ad dismissed.");
+                fullscreenCoordinator.release("rewarded_interstitial", placementId);
+                events.emit("rewarded_interstitial", placementId, "dismissed", null, "Rewarded interstitial ad dismissed.", null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), false));
             }
 
             @Override
@@ -212,7 +220,8 @@ public class RewardedInterstitialAdController {
                 state.recordPhase("failed");
                 logState("warn", placementId, "callback_order", "Rewarded interstitial callback: failed_to_show.");
                 logState("warn", placementId, "state_transition", "Rewarded interstitial state: " + state.status + ".");
-                events.emit("rewarded_interstitial", placementId, "failed", String.valueOf(adError.getCode()), adError.getMessage());
+                fullscreenCoordinator.release("rewarded_interstitial", placementId);
+                events.emit("rewarded_interstitial", placementId, "failed", String.valueOf(adError.getCode()), adError.getMessage(), null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), false));
             }
 
             @Override

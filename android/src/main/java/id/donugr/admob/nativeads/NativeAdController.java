@@ -29,6 +29,7 @@ import id.donugr.admob.R;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.events.AdEventDataBuilder;
 import id.donugr.admob.util.HostOverlayHelper;
 import id.donugr.admob.util.LayoutFingerprintHelper;
 import id.donugr.admob.util.RuntimeIdValidator;
@@ -196,7 +197,7 @@ public class NativeAdController {
             slot.markAttached(options.hostId, hostRectFingerprint, adView);
             logNativeGeometry("attach_complete", options, resolvedFrame, adView, hostRectFingerprint, false, false);
             logNativeTransition("debug", options.placementId, options.slotId, options.hostId, "state_transition", "Native state: " + slot.status + ".", null);
-            notifyNativeAttached(slot, buildNativeAttachedMessage(slot));
+            notifyNativeAttached(slot, buildNativeAttachedMessage(slot), options);
             resultRef.set(PluginResultHelper.success("ready"));
         });
 
@@ -611,11 +612,11 @@ public class NativeAdController {
         notifyNativeEvent(slot.placementId, slot.slotId, "failed", code, message);
     }
 
-    private void notifyNativeAttached(NativeSlotState slot, String message) {
+    private void notifyNativeAttached(NativeSlotState slot, String message, NativeCallOptions options) {
         if (slot != null) {
             slot.recordEmittedPhase("attached");
         }
-        notifyNativeEvent(slot.placementId, slot.slotId, "attached", null, message);
+        events.emit("native", slot.placementId, "attached", null, message, slot.slotId, AdEventDataBuilder.hostSize(options.hostX, options.hostY, options.hostWidth, options.hostHeight, options.hostAnchor));
     }
 
     private void notifyNativeDetached(NativeSlotState slot, String message) {

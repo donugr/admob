@@ -12,6 +12,7 @@ import com.google.android.gms.ads.appopen.AppOpenAd.AppOpenAdLoadCallback;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.events.AdEventDataBuilder;
 import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Date;
@@ -25,16 +26,18 @@ public class AppOpenAdController {
     private final AppOpenHost host;
     private final RuntimeConfig runtimeConfig;
     private final AdEventDispatcher events;
+    private final FullscreenAdCoordinator fullscreenCoordinator;
     private final Map<String, AppOpenAd> appOpenAds = new ConcurrentHashMap<>();
     private final Map<String, Long> loadTimes = new ConcurrentHashMap<>();
     private final Map<String, FullscreenPlacementState> placementStates = new ConcurrentHashMap<>();
     private final Set<String> loadingPlacements = ConcurrentHashMap.newKeySet();
     private final Set<String> disposedPlacements = ConcurrentHashMap.newKeySet();
 
-    public AppOpenAdController(AppOpenHost host, RuntimeConfig runtimeConfig, AdEventDispatcher events) {
+    public AppOpenAdController(AppOpenHost host, RuntimeConfig runtimeConfig, AdEventDispatcher events, FullscreenAdCoordinator fullscreenCoordinator) {
         this.host = host;
         this.runtimeConfig = runtimeConfig;
         this.events = events;
+        this.fullscreenCoordinator = fullscreenCoordinator;
     }
 
     public void preload(PluginCall call) {
@@ -148,6 +151,10 @@ public class AppOpenAdController {
             call.resolve(PluginResultHelper.failure("NOT_READY", "App open ad is already showing.", "not_ready"));
             return;
         }
+        if (!fullscreenCoordinator.tryAcquire("app_open", placementId)) {
+            call.resolve(PluginResultHelper.failure("FULLSCREEN_ALREADY_SHOWING", "Another fullscreen ad is already showing.", "not_ready"));
+            return;
+        }
         state.markShowing();
         logState("debug", placementId, "state_transition", "App open state: " + state.status + ".");
         events.log("info", "app_open", "show_start", "App open show started.", placementId, null, null, null, null);
@@ -184,7 +191,7 @@ public class AppOpenAdController {
                 state.recordPhase("shown");
                 logState("debug", placementId, "callback_order", "App open callback: shown.");
                 releaseSystemUiIfNeeded(host.getPluginActivity());
-                events.emit("app_open", placementId, "shown", null, "App open ad shown.");
+                events.emit("app_open", placementId, "shown", null, "App open ad shown.", null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), true));
             }
 
             @Override
@@ -200,7 +207,8 @@ public class AppOpenAdController {
                 state.recordPhase("dismissed");
                 logState("debug", placementId, "callback_order", "App open callback: dismissed.");
                 logState("debug", placementId, "state_transition", "App open state: " + state.status + ".");
-                events.emit("app_open", placementId, "dismissed", null, "App open ad dismissed.");
+                fullscreenCoordinator.release("app_open", placementId);
+                events.emit("app_open", placementId, "dismissed", null, "App open ad dismissed.", null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), false));
             }
 
             @Override
@@ -216,7 +224,8 @@ public class AppOpenAdController {
                 state.recordPhase("failed");
                 logState("warn", placementId, "callback_order", "App open callback: failed_to_show.");
                 logState("warn", placementId, "state_transition", "App open state: " + state.status + ".");
-                events.emit("app_open", placementId, "failed", String.valueOf(adError.getCode()), adError.getMessage());
+                fullscreenCoordinator.release("app_open", placementId);
+                events.emit("app_open", placementId, "failed", String.valueOf(adError.getCode()), adError.getMessage(), null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), false));
             }
 
             @Override

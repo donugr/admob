@@ -1273,3 +1273,50 @@ This package is intended for public npm usage, so the public API aims to stay:
 - conservative around policy-sensitive behavior
 - stable in naming for `placementId`, `slotId`, `hostId`, and event phases
 - debuggable through shared runtime and event contracts
+
+
+## Production lifecycle and event data
+
+All Android ad formats use real Google Mobile Ads SDK implementations. Production release still requires integration testing with Google test ads, consent states, physical devices, background/foreground transitions, orientation changes, no-fill handling, and duplicate-call protection.
+
+### Event data by format
+
+| Format | `creativeSize` | `hostSize` | `fullscreen` | `reward` |
+|---|---:|---:|---:|---:|
+| Banner | Yes | No | No | No |
+| Inline banner | Yes | Yes | No | No |
+| Native | No | Yes | No | No |
+| Interstitial | No | No | Yes | No |
+| Rewarded | No | No | Yes | Yes |
+| Rewarded interstitial | No | No | Yes | Yes |
+| App open | No | No | Yes | No |
+
+`creativeSize` is the Google `AdView` size in dp and physical pixels. `hostSize` is the application host rectangle and must not be interpreted as an intrinsic native creative size. Fullscreen formats intentionally do not report a creative size.
+
+### Fullscreen lifecycle
+
+Recommended flow: preload, check readiness, show, wait for dismissed or failed, then preload the next instance. A global fullscreen lock prevents two fullscreen formats from being shown at the same time. A second show request returns `FULLSCREEN_ALREADY_SHOWING`.
+
+### Reward safety
+
+Grant rewards only from `phase: "reward_earned"` and read `data.reward.amount` plus `data.reward.type`. Do not grant rewards from `shown`, `impression`, or `dismissed`. Applications should use an idempotency guard so a repeated event cannot grant the same reward twice.
+
+### App open policy
+
+App open ads include an internal freshness check. The application remains responsible for deciding when to show them. Do not show while consent UI, critical startup UI, payments, or another fullscreen ad is active. On foreground: resolve consent, confirm readiness and freshness, confirm no fullscreen ad is active, then show.
+
+### Diagnostics
+
+Use `adEvent` for application behavior and business logic. Use `adLog` only for diagnostics such as state transitions, stale callbacks, geometry, duplicate requests, and cleanup. Business logic must not depend on `adLog`.
+
+### Testing checklist
+
+- Use Google test ad units during development.
+- Test consent accepted, denied, and not-required states.
+- Test preload, readiness, show, dismissal, failure, and no-fill.
+- Test duplicate preload and duplicate show calls.
+- Test background/foreground and orientation changes.
+- Verify rewards are granted exactly once.
+- Verify fullscreen concurrency protection.
+- Verify app open freshness behavior.
+- Test `clearAll()` while requests are loading.

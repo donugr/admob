@@ -146,7 +146,7 @@ export type NativeOptions = {
 };
 
 export type InlineBannerAdSizeStrategy = "current_orientation" | "landscape" | "portrait";
-export type InlineBannerCreativeSize = {
+export type AdCreativeSize = {
   widthDp: number;
   heightDp: number;
   widthPx: number;
@@ -154,6 +154,38 @@ export type InlineBannerCreativeSize = {
   requestedWidthDp?: number;
   requestedMaxHeightDp?: number;
 };
+export type InlineBannerCreativeSize = AdCreativeSize;
+
+export type AdHostSize = {
+  xPx?: number;
+  yPx?: number;
+  widthPx: number;
+  heightPx: number;
+  widthDp?: number;
+  heightDp?: number;
+  anchor?: NativeHostAnchor;
+};
+
+export type AdFullscreenInfo = {
+  active: boolean;
+  orientation?: "portrait" | "landscape";
+  shownAt?: number;
+  dismissedAt?: number;
+};
+
+export type AdRewardInfo = {
+  amount: number;
+  type: string;
+};
+
+export type AdEventData = {
+  creativeSize?: AdCreativeSize;
+  hostSize?: AdHostSize;
+  fullscreen?: AdFullscreenInfo;
+  reward?: AdRewardInfo;
+  [key: string]: unknown;
+};
+
 export type InlineBannerOptions = {
   placementId: string;
   slotId: string;
@@ -190,10 +222,7 @@ export type AdEvent = {
   phase: AdEventPhase;
   code?: string;
   message?: string;
-  data?: {
-    creativeSize?: InlineBannerCreativeSize;
-    [key: string]: unknown;
-  };
+  data?: AdEventData;
 };
 
 export type AdLogScope = AdFormat | "core" | "consent";

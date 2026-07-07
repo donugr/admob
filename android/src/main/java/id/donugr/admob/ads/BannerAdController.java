@@ -18,6 +18,7 @@ import com.google.android.gms.ads.LoadAdError;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.events.AdEventDataBuilder;
 import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
@@ -104,7 +105,7 @@ public class BannerAdController {
                     recordLoadedEmission(placementId);
                     currentState.markLoaded();
                     logBannerState("debug", placementId, "state_transition", "Banner state: " + currentState.status + ".");
-                    events.emit("banner", placementId, "loaded", null, "Banner loaded.");
+                    events.emit("banner", placementId, "loaded", null, "Banner loaded.", null, AdEventDataBuilder.creativeSize(adView, activity));
                 }
 
                 @Override

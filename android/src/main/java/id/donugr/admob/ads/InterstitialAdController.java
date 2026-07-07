@@ -12,6 +12,7 @@ import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback;
 import id.donugr.admob.core.PluginResultHelper;
 import id.donugr.admob.core.RuntimeConfig;
 import id.donugr.admob.events.AdEventDispatcher;
+import id.donugr.admob.events.AdEventDataBuilder;
 import id.donugr.admob.util.SystemUiHelper;
 import id.donugr.admob.util.TestAdPresetResolver;
 import java.util.Map;
@@ -22,15 +23,17 @@ public class InterstitialAdController {
     private final InterstitialHost host;
     private final RuntimeConfig runtimeConfig;
     private final AdEventDispatcher events;
+    private final FullscreenAdCoordinator fullscreenCoordinator;
     private final Map<String, InterstitialAd> interstitialAds = new ConcurrentHashMap<>();
     private final Map<String, FullscreenPlacementState> placementStates = new ConcurrentHashMap<>();
     private final Set<String> loadingPlacements = ConcurrentHashMap.newKeySet();
     private final Set<String> disposedPlacements = ConcurrentHashMap.newKeySet();
 
-    public InterstitialAdController(InterstitialHost host, RuntimeConfig runtimeConfig, AdEventDispatcher events) {
+    public InterstitialAdController(InterstitialHost host, RuntimeConfig runtimeConfig, AdEventDispatcher events, FullscreenAdCoordinator fullscreenCoordinator) {
         this.host = host;
         this.runtimeConfig = runtimeConfig;
         this.events = events;
+        this.fullscreenCoordinator = fullscreenCoordinator;
     }
 
     public void preload(PluginCall call) {
@@ -140,6 +143,10 @@ public class InterstitialAdController {
             call.resolve(PluginResultHelper.failure("NOT_READY", "Interstitial is already showing.", "not_ready"));
             return;
         }
+        if (!fullscreenCoordinator.tryAcquire("interstitial", placementId)) {
+            call.resolve(PluginResultHelper.failure("FULLSCREEN_ALREADY_SHOWING", "Another fullscreen ad is already showing.", "not_ready"));
+            return;
+        }
         state.markShowing();
         logState("debug", placementId, "state_transition", "Interstitial state: " + state.status + ".");
         events.log("info", "interstitial", "show_start", "Interstitial show started.", placementId, null, null, null, null);
@@ -171,7 +178,7 @@ public class InterstitialAdController {
                 state.recordPhase("shown");
                 logState("debug", placementId, "callback_order", "Interstitial callback: shown.");
                 releaseSystemUiIfNeeded(host.getPluginActivity());
-                events.emit("interstitial", placementId, "shown", null, "Interstitial shown.");
+                events.emit("interstitial", placementId, "shown", null, "Interstitial shown.", null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), true));
             }
 
             @Override
@@ -186,7 +193,8 @@ public class InterstitialAdController {
                 state.recordPhase("dismissed");
                 logState("debug", placementId, "callback_order", "Interstitial callback: dismissed.");
                 logState("debug", placementId, "state_transition", "Interstitial state: " + state.status + ".");
-                events.emit("interstitial", placementId, "dismissed", null, "Interstitial dismissed.");
+                fullscreenCoordinator.release("interstitial", placementId);
+                events.emit("interstitial", placementId, "dismissed", null, "Interstitial dismissed.", null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), false));
             }
 
             @Override
@@ -201,7 +209,8 @@ public class InterstitialAdController {
                 state.recordPhase("failed");
                 logState("warn", placementId, "callback_order", "Interstitial callback: failed_to_show.");
                 logState("warn", placementId, "state_transition", "Interstitial state: " + state.status + ".");
-                events.emit("interstitial", placementId, "failed", String.valueOf(adError.getCode()), adError.getMessage());
+                fullscreenCoordinator.release("interstitial", placementId);
+                events.emit("interstitial", placementId, "failed", String.valueOf(adError.getCode()), adError.getMessage(), null, AdEventDataBuilder.fullscreen(host.getPluginActivity(), false));
             }
 
             @Override
