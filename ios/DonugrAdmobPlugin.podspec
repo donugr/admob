@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name = 'DonugrAdmobPlugin'
-  s.version = '0.2.0'
+  s.version = '0.2.1'
   s.summary = 'Capacitor AdMob plugin with Android-first support for consent, standard ads, rewarded interstitial, native host placements, and inline banner host placements.'
   s.description = <<-DESC
     Public Capacitor AdMob plugin with an Android-first API surface for consent flows,
